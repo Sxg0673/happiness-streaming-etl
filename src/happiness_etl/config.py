@@ -28,6 +28,19 @@ UNIFIED_COLUMNS = (COUNTRY, YEAR, *FEATURES, TARGET)
 TEST_SIZE = 0.3
 RANDOM_STATE = 42
 
+# Modelo (D-031/D-032): regresión lineal con estas variables numéricas + 'year'
+# como categoría. 'generosity' se descartó en el EDA (no aporta al error de
+# validación cruzada). 'country' y el puntaje real nunca son variables.
+MODEL_FEATURES = ("gdp", "family", "health", "freedom", "corruption")
+
+# Artefactos del entrenamiento. El modelo y sus métricas se versionan (son
+# pequeños); el 30 % de prueba es lo que transmite el producer (D-034).
+MODELS_DIR = ROOT_DIR / "models"
+MODEL_FILE = MODELS_DIR / "model.pkl"
+METRICS_FILE = MODELS_DIR / "metrics.json"
+STREAMING_DIR = ROOT_DIR / "data" / "streaming"
+STREAMING_FILE = STREAMING_DIR / "happiness_test.csv"
+
 # Equivalencias: nombre original en cada archivo -> nombre canónico.
 # Las columnas que no aparecen aquí (rangos, errores, intervalos, whiskers,
 # Dystopia Residual, Region) no entran al esquema unificado.
