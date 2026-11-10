@@ -58,7 +58,64 @@ _Pendiente._
 
 ## Esquema de la base de datos
 
-_Pendiente._
+PostgreSQL con un esquema en estrella: una tabla de hechos con las predicciones, dos dimensiones y una tabla de staging para la trazabilidad.
+
+| Archivo | Contenido |
+|---|---|
+| `sql/create_tables.sql` | Tablas, llaves, restricciones e índices (idempotente). |
+| `sql/seed_dimensions.sql` | Carga inicial de `dim_country` (164 países con su región) y `dim_date` (2015-2019). |
+| `docs/diagrams/dimensional_model.dbml` | Diagrama del modelo para [dbdiagram.io](https://dbdiagram.io). |
+
+```mermaid
+erDiagram
+    raw_happiness_events ||--o| fact_predictions : "genera (si es válido)"
+    dim_country ||--o{ fact_predictions : ""
+    dim_date ||--o{ fact_predictions : ""
+
+    raw_happiness_events {
+        bigserial raw_event_id PK
+        text kafka_topic
+        int kafka_partition
+        bigint kafka_offset
+        text raw_payload
+        text status
+        text error_message
+        timestamptz received_at
+        timestamptz processed_at
+    }
+    fact_predictions {
+        bigserial prediction_id PK
+        bigint raw_event_id FK
+        text event_id
+        int country_id FK
+        smallint date_id FK
+        double actual_score
+        double predicted_score
+        double prediction_error
+        double absolute_error
+        timestamptz event_time
+        timestamptz prediction_timestamp
+        text model_version
+    }
+    dim_country {
+        serial country_id PK
+        text country_name
+        text region
+    }
+    dim_date {
+        smallint date_id PK
+        smallint year
+        date report_date
+        text report_name
+    }
+```
+
+| Tabla | Grano | Decisiones |
+|---|---|---|
+| `raw_happiness_events` | Un mensaje de Kafka | Staging, no dimensión. El consumer inserta **antes** de validar; `raw_payload` es el texto exacto (conserva incluso un JSON mal formado). `status`: `RECEIVED` (guardado, aún sin procesar) y los cuatro del taller: `VALID`, `INVALID_SCHEMA`, `INVALID_VALUES`, `PREDICTION_ERROR`. Un estado inválido exige `error_message`. `(topic, partition, offset)` es único, así una reentrega de Kafka no duplica filas. |
+| `fact_predictions` | Una predicción por evento válido | `raw_event_id` es único y enlaza cada predicción con el mensaje que la originó. `prediction_error = predicted_score − actual_score` (con signo: positivo = sobreestima) y `absolute_error` son **columnas generadas**: las calcula PostgreSQL, por lo que nunca quedan inconsistentes. `model_version` identifica el modelo que predijo. |
+| `dim_country` | Un país | `region` viene de la columna Region de 2015-2016; Gambia (solo aparece en 2019) se asignó a mano a Sub-Saharan Africa. Un país nuevo se inserta con región vacía en lugar de rechazar el evento. |
+| `dim_date` | Un reporte anual | `date_id` = año. Es el eje temporal del análisis (tendencia del error por año). El momento del streaming queda en `event_time` y `prediction_timestamp`: todos los eventos se emiten el mismo día, así que una dimensión diaria no aportaría. |
 
 ## Dashboard
 

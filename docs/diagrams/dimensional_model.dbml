@@ -1,0 +1,86 @@
+// Modelo dimensional de predicciones · Workshop-3 (happiness-streaming-etl)
+// Pegar en https://dbdiagram.io para verlo. Fuente de verdad del esquema: sql/create_tables.sql
+
+Project happiness_streaming_etl {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Estrella con una tabla de hechos (fact_predictions) y dos dimensiones (dim_country, dim_date).
+  raw_happiness_events es staging para trazabilidad, no una dimensión: guarda cada mensaje de
+  Kafka tal cual llegó, con su estado de procesamiento.
+  '''
+}
+
+TableGroup staging {
+  raw_happiness_events
+}
+
+TableGroup star_schema {
+  fact_predictions
+  dim_country
+  dim_date
+}
+
+Table raw_happiness_events {
+  raw_event_id bigserial [pk]
+  kafka_topic text [not null]
+  kafka_partition integer [not null]
+  kafka_offset bigint [not null]
+  kafka_key text [note: 'country (llave del mensaje)']
+  kafka_timestamp timestamptz
+  raw_payload text [not null, note: 'mensaje original exacto (texto, no JSONB)']
+  status text [not null, default: 'RECEIVED', note: 'RECEIVED | VALID | INVALID_SCHEMA | INVALID_VALUES | PREDICTION_ERROR']
+  error_message text [note: 'obligatorio si el estado es inválido o PREDICTION_ERROR']
+  received_at timestamptz [not null, default: `now()`]
+  processed_at timestamptz [note: 'obligatorio si status <> RECEIVED']
+
+  indexes {
+    (kafka_topic, kafka_partition, kafka_offset) [unique, name: 'uq_raw_kafka_message']
+    status [name: 'ix_raw_status']
+  }
+
+  Note: 'Staging. El consumer inserta aquí antes de validar o predecir; los inválidos también se guardan.'
+}
+
+Table dim_country {
+  country_id serial [pk]
+  country_name text [not null, unique]
+  region text [note: 'de Region 2015-2016; NULL para un país nuevo no precargado']
+
+  Note: 'Precargada con sql/seed_dimensions.sql (164 países).'
+}
+
+Table dim_date {
+  date_id smallint [pk, note: 'clave inteligente = año (2019)']
+  year smallint [not null, unique]
+  report_date date [not null, note: '1 de enero del año']
+  report_name text [not null, note: 'World Happiness Report 2019']
+
+  Note: 'Granularidad anual: un reporte por fila (2015-2019).'
+}
+
+Table fact_predictions {
+  prediction_id bigserial [pk]
+  raw_event_id bigint [not null, unique]
+  event_id text [not null, note: 'dimensión degenerada (id del evento)']
+  country_id integer [not null]
+  date_id smallint [not null]
+  actual_score "double precision" [not null, note: 'entre 0 y 10; solo para evaluar']
+  predicted_score "double precision" [not null]
+  prediction_error "double precision" [note: 'generada: predicted_score - actual_score']
+  absolute_error "double precision" [note: 'generada: abs(prediction_error)']
+  event_time timestamptz [not null, note: 'cuándo emitió el producer el evento']
+  prediction_timestamp timestamptz [not null, default: `now()`]
+  model_version text [not null]
+
+  indexes {
+    country_id [name: 'ix_fact_country']
+    date_id [name: 'ix_fact_date']
+    event_id [name: 'ix_fact_event_id']
+  }
+
+  Note: 'Grano: una predicción por evento válido.'
+}
+
+Ref fk_fact_raw_event: fact_predictions.raw_event_id - raw_happiness_events.raw_event_id
+Ref fk_fact_country: fact_predictions.country_id > dim_country.country_id
+Ref fk_fact_date: fact_predictions.date_id > dim_date.date_id
