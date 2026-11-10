@@ -23,6 +23,11 @@ FEATURES = ("gdp", "family", "health", "freedom", "generosity", "corruption")
 TARGET = "happiness_score"
 UNIFIED_COLUMNS = (COUNTRY, YEAR, *FEATURES, TARGET)
 
+# División entrenamiento/prueba (sugerencia del PDF: 70/30), estratificada por año.
+# La comparten eda.ipynb y model_training.ipynb para que sea la misma partición.
+TEST_SIZE = 0.3
+RANDOM_STATE = 42
+
 # Equivalencias: nombre original en cada archivo -> nombre canónico.
 # Las columnas que no aparecen aquí (rangos, errores, intervalos, whiskers,
 # Dystopia Residual, Region) no entran al esquema unificado.
