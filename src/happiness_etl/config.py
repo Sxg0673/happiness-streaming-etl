@@ -55,6 +55,17 @@ _MAP_2018_2019 = {
     "Perceptions of corruption": "corruption",
 }
 
+# Variantes del nombre de un mismo país entre años -> nombre canónico.
+# Regla: el nombre que aparece en más años; en empate (Somaliland), "Somaliland Region".
+COUNTRY_NAME_MAP = {
+    "Hong Kong S.A.R., China": "Hong Kong",
+    "Taiwan Province of China": "Taiwan",
+    "Northern Cyprus": "North Cyprus",
+    "Trinidad & Tobago": "Trinidad and Tobago",
+    "North Macedonia": "Macedonia",
+    "Somaliland region": "Somaliland Region",
+}
+
 COLUMN_MAP_BY_YEAR = {
     2015: _MAP_2015_2016,
     2016: _MAP_2015_2016,
