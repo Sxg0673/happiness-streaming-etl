@@ -19,3 +19,7 @@ CLAUDE.md
 # Empaquetado
 *.egg-info/
 build/
+
+# Dataset procesado: se regenera con main.py
+data/processed/*
+!data/processed/.gitkeep
