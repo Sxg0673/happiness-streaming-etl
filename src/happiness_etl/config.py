@@ -10,6 +10,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT_DIR / "data" / "raw"
 PROCESSED_DIR = ROOT_DIR / "data" / "processed"
+# Dataset unificado que escribe main.py y leen el entrenamiento y el producer
+PROCESSED_FILE = PROCESSED_DIR / "happiness_unified.csv"
 
 YEARS = (2015, 2016, 2017, 2018, 2019)
 
