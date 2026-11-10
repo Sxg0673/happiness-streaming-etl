@@ -30,7 +30,9 @@ data/raw/*.csv -> extract -> clean -> transform -> validate (compuerta de calida
 | `validate.py` | Compuerta de calidad antes de cargar y reconciliación después de cargar |
 | `load.py` | Escritura atómica del CSV y lectura con tipos del dataset unificado |
 
-Los pasos intermedios se pasan en memoria; solo el dataset final ya validado se escribe en disco, porque el notebook de entrenamiento y el producer de Kafka lo leen desde procesos separados. El archivo no se versiona: se regenera con `main.py`.
+Los pasos intermedios se pasan en memoria; solo el dataset final ya validado se escribe en disco, porque los notebooks lo leen desde procesos separados. El archivo no se versiona: se regenera con `main.py`.
+
+`notebooks/model_training.ipynb` divide ese dataset en entrenamiento (70 %) y prueba (30 %), guarda el modelo en `models/model.pkl` y escribe la parte de prueba en `data/streaming/happiness_test.csv`. Ese archivo, versionado, es lo que transmite el producer de Kafka, para que las métricas del dashboard se calculen sobre datos que el modelo no vio.
 
 ## Decisiones de limpieza de datos
 
@@ -40,7 +42,7 @@ El perfilado de calidad está en [`notebooks/profiling.ipynb`](notebooks/profili
 |---|---|
 | Un mismo concepto tiene hasta tres nombres de columna según el año | Se asigna a cada año los nombres canónicos (`config.COLUMN_MAP_BY_YEAR`) |
 | Los archivos no traen columna de año | Se agrega `year` a partir del archivo de origen |
-| Columnas que no se usan: rankings, `Region`, error estándar, intervalos de confianza, *whiskers* y `Dystopia Residual` | Se descartan. El ranking y el residual dependen del puntaje, así que usarlos sería fuga del target |
+| Columnas que no se usan: rankings, `Region`, error estándar, intervalos de confianza, *whiskers* y `Dystopia Residual` | No pasan al dataset unificado. El ranking y el residual dependen del puntaje, así que usarlos sería fuga del target. `Region` (solo 2015-2016) se aprovecha como atributo de `dim_country` en la base de datos |
 | Un único valor faltante: `corruption` de United Arab Emirates en 2018 | Interpolación lineal dentro del país (promedio de 2017 y 2019, 0.253). Solo entre años observados, sin extrapolar; queda registrado como aviso en el log |
 | Seis países se escriben distinto según el año (p. ej. `Trinidad & Tobago`) | Se usa el nombre que aparece en más años (`config.COUNTRY_NAME_MAP`): 170 nombres pasan a ser 164 países |
 | Un cero por variable y año, y 102 outliers según IQR | Se conservan: los ceros son el mínimo de cada escala y los outliers son valores plausibles, no errores |
