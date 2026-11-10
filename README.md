@@ -68,6 +68,12 @@ PostgreSQL con un esquema en estrella: una tabla de hechos con las predicciones,
 | `sql/seed_dimensions.sql` | Carga inicial de `dim_country` (164 países con su región) y `dim_date` (2015-2019). |
 | `docs/diagrams/dimensional_model.dbml` | Diagrama del modelo para [dbdiagram.io](https://dbdiagram.io). |
 
+Diagrama generado en dbdiagram.io a partir de `docs/diagrams/dimensional_model.dbml`:
+
+![Modelo dimensional de predicciones](docs/img/dimensional_model.png)
+
+Versión equivalente en Mermaid (GitHub la dibuja directamente):
+
 ```mermaid
 erDiagram
     raw_happiness_events ||--o| fact_predictions : "genera (si es válido)"
