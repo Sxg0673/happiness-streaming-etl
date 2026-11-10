@@ -15,3 +15,7 @@ __pycache__/
 CLAUDE.md
 .control/
 .claude/
+
+# Empaquetado
+*.egg-info/
+build/
