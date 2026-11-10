@@ -1,80 +1,80 @@
 # Happiness Streaming ETL
 
-Streaming ETL pipeline with Apache Kafka and a pre-trained regression model that predicts the World Happiness score in real time (2015-2019 data).
+Pipeline ETL en streaming con Apache Kafka y un modelo de regresión preentrenado que predice en tiempo real el puntaje de felicidad (World Happiness, datos 2015-2019).
 
-Course: ETL (G01) - Workshop-3, Universidad Autonoma de Occidente.
+Curso: ETL (G01) - Workshop-3, Universidad Autónoma de Occidente.
 
-## Project description
+## Descripción del proyecto
 
-The project has two parts:
+El proyecto tiene dos partes:
 
-- **Part A (offline):** profile the five yearly World Happiness files, clean and harmonize them into one dataset, and train a regression model saved as `model.pkl`.
-- **Part B (streaming):** a Kafka producer publishes each record as an event, and a consumer validates it, predicts the happiness score and stores raw events and predictions in a database used by the dashboard.
+- **Parte A (offline):** perfilar los cinco archivos anuales de World Happiness, limpiarlos y armonizarlos en un solo dataset, y entrenar un modelo de regresión guardado como `model.pkl`.
+- **Parte B (streaming):** un producer de Kafka publica cada registro como un evento; un consumer lo valida, predice el puntaje y guarda los eventos crudos y las predicciones en una base de datos que alimenta el dashboard.
 
-## Architecture
+## Arquitectura
 
-_Pending (full diagram at the end of the project)._
+_Pendiente (diagrama completo al final del proyecto)._
 
-Part A is a Python package (`src/happiness_etl/`) run by `main.py`:
+La Parte A es un paquete de Python (`src/happiness_etl/`) que ejecuta `main.py`:
 
 ```
-data/raw/*.csv -> extract -> clean -> transform -> validate (quality gate) -> load -> data/processed/happiness_unified.csv
+data/raw/*.csv -> extract -> clean -> transform -> validate (compuerta de calidad) -> load -> data/processed/happiness_unified.csv
 ```
 
-| Module | Responsibility |
+| Módulo | Responsabilidad |
 |---|---|
-| `config.py` | Paths, years, canonical names and the column map of each year (single source of truth) |
-| `extract.py` | Read the original CSV files as they are |
-| `clean.py` | Per year: canonical column names, `year` column, country text, numeric types, exact duplicates |
-| `transform.py` | Across years: merge, unify country names, interpolate missing values, sort |
-| `validate.py` | Quality gate before loading and reconciliation after loading |
-| `load.py` | Atomic CSV write and typed read of the unified dataset |
+| `config.py` | Rutas, años, nombres canónicos y mapa de columnas de cada año (única fuente de verdad) |
+| `extract.py` | Leer los CSV originales tal como vienen |
+| `clean.py` | Por año: nombres canónicos de columna, columna `year`, texto del país, tipos numéricos y duplicados exactos |
+| `transform.py` | Entre años: unir, unificar nombres de país, interpolar valores faltantes y ordenar |
+| `validate.py` | Compuerta de calidad antes de cargar y reconciliación después de cargar |
+| `load.py` | Escritura atómica del CSV y lectura con tipos del dataset unificado |
 
-Intermediate steps stay in memory; only the final validated dataset is written to disk, because the training notebook and the Kafka producer read it from separate processes. The file is not versioned: it is regenerated with `main.py`.
+Los pasos intermedios se pasan en memoria; solo el dataset final ya validado se escribe en disco, porque el notebook de entrenamiento y el producer de Kafka lo leen desde procesos separados. El archivo no se versiona: se regenera con `main.py`.
 
-## Data cleaning decisions
+## Decisiones de limpieza de datos
 
-The data quality profiling is in [`notebooks/profiling.ipynb`](notebooks/profiling.ipynb) (Step 1 of the workshop). Main decisions:
+El perfilado de calidad está en [`notebooks/profiling.ipynb`](notebooks/profiling.ipynb) (Paso 1 del taller). Decisiones principales:
 
-| Finding | Decision |
+| Hallazgo | Decisión |
 |---|---|
-| The same concept has up to three column names depending on the year | Map every year to canonical names (`config.COLUMN_MAP_BY_YEAR`) |
-| Files have no year column | Add `year` from the source file |
-| Columns not used: ranks, `Region`, standard error, confidence intervals, whiskers, `Dystopia Residual` | Dropped. Ranks and the residual are derived from the score, so using them would be target leakage |
-| One missing value: `corruption` of United Arab Emirates in 2018 | Linear interpolation within the country (2017-2019 average, 0.253). Only between observed years, never extrapolated; logged as a warning |
-| Six countries are written differently across years (e.g. `Trinidad & Tobago`) | Use the name that appears in most years (`config.COUNTRY_NAME_MAP`): 170 names become 164 countries |
-| One zero per variable and year, and 102 IQR outliers | Kept: zeros are the minimum of each scale and the outliers are plausible values, not errors |
-| `family` and `health` change scale between years | Not changed in cleaning; studied in the model EDA |
+| Un mismo concepto tiene hasta tres nombres de columna según el año | Se asigna a cada año los nombres canónicos (`config.COLUMN_MAP_BY_YEAR`) |
+| Los archivos no traen columna de año | Se agrega `year` a partir del archivo de origen |
+| Columnas que no se usan: rankings, `Region`, error estándar, intervalos de confianza, *whiskers* y `Dystopia Residual` | Se descartan. El ranking y el residual dependen del puntaje, así que usarlos sería fuga del target |
+| Un único valor faltante: `corruption` de United Arab Emirates en 2018 | Interpolación lineal dentro del país (promedio de 2017 y 2019, 0.253). Solo entre años observados, sin extrapolar; queda registrado como aviso en el log |
+| Seis países se escriben distinto según el año (p. ej. `Trinidad & Tobago`) | Se usa el nombre que aparece en más años (`config.COUNTRY_NAME_MAP`): 170 nombres pasan a ser 164 países |
+| Un cero por variable y año, y 102 outliers según IQR | Se conservan: los ceros son el mínimo de cada escala y los outliers son valores plausibles, no errores |
+| `family` y `health` cambian de escala entre años | No se modifica en la limpieza; se estudia en el EDA del modelo |
 
-The quality gate (`validate.py`) stops the pipeline before writing if any rule fails, and reports all failures at once: exact schema, no nulls, non-empty country, year in 2015-2019, non-negative features, score between 0 and 10 and unique (country, year). Result: 782 rows, 164 countries, no missing values.
+La compuerta de calidad (`validate.py`) detiene el pipeline antes de escribir si falla alguna regla y reporta todas las fallas juntas: esquema exacto, sin nulos, país no vacío, año entre 2015 y 2019, variables no negativas, puntaje entre 0 y 10 y par (país, año) único. Resultado: 782 filas, 164 países y ningún valor faltante.
 
-## Feature engineering decisions
+## Decisiones de ingeniería de características
 
-_Pending._
+_Pendiente._
 
-## Kafka pipeline and event contract
+## Pipeline de Kafka y contrato del evento
 
-_Pending._
+_Pendiente._
 
-## Database schema
+## Esquema de la base de datos
 
-_Pending._
+_Pendiente._
 
 ## Dashboard
 
-_Pending._
+_Pendiente._
 
-## Execution instructions
+## Instrucciones de ejecución
 
-_Partial: Part A only for now._
+_Parcial: por ahora solo la Parte A._
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-python -m happiness_etl.main   # builds data/processed/happiness_unified.csv
-python -m pytest -q             # runs the tests
+python -m happiness_etl.main   # genera data/processed/happiness_unified.csv
+python -m pytest -q            # ejecuta las pruebas
 ```
 
-`main.py` exits with code 1 and lists the failed rules if the quality gate stops the pipeline.
+`main.py` termina con código 1 y lista las reglas incumplidas si la compuerta de calidad detiene el pipeline.
