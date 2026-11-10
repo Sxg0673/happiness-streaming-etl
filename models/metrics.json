@@ -1,0 +1,52 @@
+{
+  "model": "LinearRegression",
+  "features": [
+    "gdp",
+    "family",
+    "health",
+    "freedom",
+    "corruption"
+  ],
+  "categorical": [
+    "year"
+  ],
+  "year_categories": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+  ],
+  "target": "happiness_score",
+  "split": {
+    "test_size": 0.3,
+    "random_state": 42,
+    "stratify": "year",
+    "n_train": 547,
+    "n_test": 235
+  },
+  "test_metrics": {
+    "mae": 0.4212,
+    "rmse": 0.5403,
+    "r2": 0.804,
+    "bias": 0.0392
+  },
+  "baseline_year_mean_test_metrics": {
+    "mae": 1.0465,
+    "rmse": 1.2392,
+    "r2": -0.0311,
+    "bias": 0.1107
+  },
+  "cv_train": {
+    "rmse_mean": 0.5298,
+    "rmse_std": 0.0411,
+    "mae_mean": 0.4125,
+    "folds": "RepeatedKFold 5x3"
+  },
+  "versions": {
+    "python": "3.12.15",
+    "scikit-learn": "1.9.1",
+    "pandas": "3.1.1",
+    "numpy": "2.5.4"
+  }
+}
