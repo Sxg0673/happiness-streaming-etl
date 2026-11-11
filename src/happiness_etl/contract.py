@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Mapping
 
-from happiness_etl.config import COUNTRY, FEATURES, SCORE_RANGE, TARGET, YEAR, YEARS
+from happiness_etl.config import COUNTRY, FEATURE_MAX, FEATURES, SCORE_RANGE, TARGET, YEAR, YEARS
 
 # Campos del evento que no existen en el dataset unificado
 EVENT_ID = "event_id"
@@ -220,6 +220,8 @@ def _value_errors(data: dict[str, Any]) -> list[str]:
                 errors.append(f"{name} {value} fuera de {SCORE_RANGE[0]}-{SCORE_RANGE[1]}")
         elif value < 0:
             errors.append(f"{name} es negativo ({value})")
+        elif value > FEATURE_MAX:
+            errors.append(f"{name} {value} supera el máximo de {FEATURE_MAX}")
     return errors
 
 

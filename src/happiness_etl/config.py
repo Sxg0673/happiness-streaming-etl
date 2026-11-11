@@ -28,6 +28,11 @@ UNIFIED_COLUMNS = (COUNTRY, YEAR, *FEATURES, TARGET)
 # (contract.py), para que el streaming acepte lo mismo que el ETL dio por limpio.
 SCORE_RANGE = (0.0, 10.0)
 
+# Tope de las seis variables explicativas. En los datos reales el máximo es 2.096
+# (gdp); 3.0 deja margen y frena valores absurdos (un gdp de 500) que el modelo
+# extrapolaría sin avisar. Lo usan validate.py y contract.py.
+FEATURE_MAX = 3.0
+
 # División entrenamiento/prueba (sugerencia del PDF: 70/30), estratificada por año.
 # La comparten eda.ipynb y model_training.ipynb para que sea la misma partición.
 TEST_SIZE = 0.3

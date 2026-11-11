@@ -50,7 +50,7 @@ El perfilado de calidad está en [`notebooks/profiling.ipynb`](notebooks/profili
 | Un cero por variable y año, y 102 outliers según IQR | Se conservan: los ceros son el mínimo de cada escala y los outliers son valores plausibles, no errores |
 | `family` y `health` cambian de escala entre años | No se modifica en la limpieza; se estudia en el EDA del modelo |
 
-La compuerta de calidad (`validate.py`) detiene el pipeline antes de escribir si falla alguna regla y reporta todas las fallas juntas: esquema exacto, sin nulos, país no vacío, año entre 2015 y 2019, variables no negativas, puntaje entre 0 y 10 y par (país, año) único. Resultado: 782 filas, 164 países y ningún valor faltante.
+La compuerta de calidad (`validate.py`) detiene el pipeline antes de escribir si falla alguna regla y reporta todas las fallas juntas: esquema exacto, sin nulos, país no vacío, año entre 2015 y 2019, variables entre 0 y 3, puntaje entre 0 y 10 y par (país, año) único. Resultado: 782 filas, 164 países y ningún valor faltante.
 
 ## Decisiones de ingeniería de características
 
@@ -89,7 +89,7 @@ Cada mensaje es un objeto JSON en UTF-8 con estos once campos. La llave del mens
 | `event_id` | texto | No vacío. Es un UUID al azar: identifica el evento de punta a punta (registro del producer, tabla cruda y tabla de hechos). |
 | `country` | texto | No vacío. También es la llave del mensaje. |
 | `year` | entero | Entre 2015 y 2019. No se aceptan `"2019"` ni `2019.5`. |
-| `gdp`, `family`, `health`, `freedom`, `generosity`, `corruption` | número | Finito y no negativo. |
+| `gdp`, `family`, `health`, `freedom`, `generosity`, `corruption` | número | Finito, entre 0 y 3. El máximo real en los datos es 2.096; el tope de 3 (`FEATURE_MAX` en `config.py`) frena valores absurdos que el modelo extrapolaría sin avisar. |
 | `actual_happiness_score` | número | Entre 0 y 10. Es el puntaje real: viaja solo para medir el error, **nunca es una variable del modelo**. |
 | `event_time` | texto | Fecha y hora ISO-8601: el momento en que el producer emitió el evento, en UTC. Si llega sin zona horaria (como en el ejemplo del taller) se interpreta como UTC. |
 
@@ -101,7 +101,7 @@ El contrato vive en un solo módulo, [`src/happiness_etl/contract.py`](src/happi
 |---|---|---|
 | `VALID` | Cumple el contrato | |
 | `INVALID_SCHEMA` | El mensaje no se puede interpretar | No es JSON o no es un objeto, falta un campo, texto en un campo numérico, `year` decimal, `event_time` que no es una fecha |
-| `INVALID_VALUES` | La forma es correcta pero un valor está fuera de rango | Año 2020, variable negativa, puntaje 11, `NaN` |
+| `INVALID_VALUES` | La forma es correcta pero un valor está fuera de rango | Año 2020, variable negativa o mayor que 3, puntaje 11, `NaN` |
 | `PREDICTION_ERROR` | El evento era válido pero el modelo falló | Lo asigna el consumer |
 
 Si hay problemas de esquema no se evalúan los rangos. Los campos que sobran se ignoran: el mensaje original queda completo en la tabla cruda.

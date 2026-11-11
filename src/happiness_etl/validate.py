@@ -10,7 +10,7 @@ el pipeline se detiene antes de escribir (o avisa que lo escrito no coincide).
 Las reglas están escritas de forma declarativa (nombre + chequeo) para poder
 llevarlas a Great Expectations más adelante si hace falta.
 La validación del contrato del evento (Parte B) está en contract.py y usa los
-mismos rangos (años, variables no negativas y rango del puntaje, desde config.py).
+mismos rangos (años, variables entre 0 y FEATURE_MAX y rango del puntaje, desde config.py).
 """
 import logging
 from dataclasses import dataclass
@@ -18,7 +18,16 @@ from typing import Callable
 
 import pandas as pd
 
-from happiness_etl.config import COUNTRY, FEATURES, SCORE_RANGE, TARGET, UNIFIED_COLUMNS, YEAR, YEARS
+from happiness_etl.config import (
+    COUNTRY,
+    FEATURE_MAX,
+    FEATURES,
+    SCORE_RANGE,
+    TARGET,
+    UNIFIED_COLUMNS,
+    YEAR,
+    YEARS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +56,7 @@ DATASET_RULES = (
     Rule("country vacío", lambda df: int((df[COUNTRY].astype(str).str.strip() == "").sum())),
     Rule(f"year fuera de {YEARS[0]}-{YEARS[-1]}", lambda df: int((~df[YEAR].isin(YEARS)).sum())),
     Rule("variables negativas", lambda df: int((df[list(FEATURES)] < 0).sum().sum())),
+    Rule(f"variables por encima de {FEATURE_MAX}", lambda df: int((df[list(FEATURES)] > FEATURE_MAX).sum().sum())),
     Rule(
         f"{TARGET} fuera de {SCORE_RANGE[0]}-{SCORE_RANGE[1]}",
         lambda df: int((~df[TARGET].between(*SCORE_RANGE)).sum()),

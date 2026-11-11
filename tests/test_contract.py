@@ -66,8 +66,8 @@ def test_extra_fields_are_ignored():
     assert result.is_valid and "source" not in result.event
 
 
-@pytest.mark.parametrize("value", [0, 0.0, 2.5])
-def test_zero_and_large_features_are_valid(value):
+@pytest.mark.parametrize("value", [0, 0.0, 2.5, 3, 3.0])
+def test_zero_and_limit_features_are_valid(value):
     assert validate_event(changed(gdp=value)).is_valid
 
 
@@ -132,6 +132,7 @@ def test_wrong_type_is_invalid_schema(field, value):
     [
         ("year", 2014), ("year", 2020), ("year", 0), ("year", -2019), ("year", 10**30),
         ("gdp", -0.1), ("family", -1), ("corruption", -1e-9), ("generosity", -5),
+        ("gdp", 3.0001), ("family", 500), ("health", 10**6), ("generosity", 3.5),
         ("gdp", float("nan")), ("health", float("inf")), ("freedom", 10**400),
         ("actual_happiness_score", -0.01), ("actual_happiness_score", 10.01),
         ("actual_happiness_score", float("nan")),
@@ -237,6 +238,13 @@ def test_statuses_match_the_database_check():
     sql = (config.ROOT_DIR / "sql" / "create_tables.sql").read_text(encoding="utf-8")
     check = sql.split("CONSTRAINT ck_raw_status CHECK", 1)[1].split(")", 1)[0]
     assert {s.strip(" '\n") for s in check.split("(", 2)[2].split(",")} == set(contract.STATUSES)
+
+
+def test_feature_ceiling_leaves_room_over_the_real_data():
+    """El tope no rechaza ningún dato real y deja margen sobre el máximo observado."""
+    records = read_processed(config.PROCESSED_FILE)[list(config.FEATURES)]
+    assert records.max().max() < config.FEATURE_MAX
+    assert records.max().max() > config.FEATURE_MAX / 2  # no es un tope tan holgado que no frene nada
 
 
 def test_score_range_matches_the_fact_table_check():

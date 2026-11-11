@@ -36,6 +36,7 @@ def test_wrong_columns(df):
         (config.COUNTRY, "  ", "country vacío"),
         (config.YEAR, 2020, "year fuera"),
         ("gdp", -0.1, "negativas"),
+        ("gdp", 3.5, "por encima"),
         (config.TARGET, 11.0, config.TARGET),
     ],
 )
