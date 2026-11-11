@@ -29,6 +29,8 @@ data/raw/*.csv -> extract -> clean -> transform -> validate (compuerta de calida
 | `transform.py` | Entre años: unir, unificar nombres de país, interpolar valores faltantes y ordenar |
 | `validate.py` | Compuerta de calidad antes de cargar y reconciliación después de cargar |
 | `load.py` | Escritura atómica del CSV y lectura con tipos del dataset unificado |
+| `contract.py` | Parte B: contrato del evento (armar y validar eventos) |
+| `db.py` | Parte B: datos de conexión a PostgreSQL (entorno, `.env` o valores por defecto) |
 
 Los pasos intermedios se pasan en memoria; solo el dataset final ya validado se escribe en disco, porque los notebooks lo leen desde procesos separados. El archivo no se versiona: se regenera con `main.py`.
 
@@ -56,7 +58,75 @@ _Pendiente._
 
 ## Pipeline de Kafka y contrato del evento
 
-_Pendiente._
+_Parcial: el contrato y el producer están listos; el consumer se agrega después._
+
+```
+data/streaming/happiness_test.csv -> producer -> topic happiness-events (3 particiones) -> consumer -> PostgreSQL
+```
+
+### Contrato del evento
+
+Cada mensaje es un objeto JSON en UTF-8 con estos once campos. La llave del mensaje de Kafka es el país, así que todos los eventos de un país caen en la misma partición y conservan su orden.
+
+```json
+{
+  "event_id": "3de398aa-28fb-401a-8bb3-98991bfc49b7",
+  "country": "Namibia",
+  "year": 2016,
+  "gdp": 0.93287,
+  "family": 0.70362,
+  "health": 0.34745,
+  "freedom": 0.48614,
+  "generosity": 0.07795,
+  "corruption": 0.10398,
+  "actual_happiness_score": 4.574,
+  "event_time": "2026-11-11T00:55:07.005Z"
+}
+```
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `event_id` | texto | No vacío. Es un UUID al azar: identifica el evento de punta a punta (registro del producer, tabla cruda y tabla de hechos). |
+| `country` | texto | No vacío. También es la llave del mensaje. |
+| `year` | entero | Entre 2015 y 2019. No se aceptan `"2019"` ni `2019.5`. |
+| `gdp`, `family`, `health`, `freedom`, `generosity`, `corruption` | número | Finito y no negativo. |
+| `actual_happiness_score` | número | Entre 0 y 10. Es el puntaje real: viaja solo para medir el error, **nunca es una variable del modelo**. |
+| `event_time` | texto | Fecha y hora ISO-8601: el momento en que el producer emitió el evento, en UTC. Si llega sin zona horaria (como en el ejemplo del taller) se interpreta como UTC. |
+
+El contrato vive en un solo módulo, [`src/happiness_etl/contract.py`](src/happiness_etl/contract.py): el producer arma los eventos con `build_event` y el consumer valida cada mensaje con `validate_event`. Los rangos son los mismos de la compuerta de calidad de la Parte A (salen de `config.py`), así que el streaming acepta exactamente lo que el ETL dio por limpio.
+
+`validate_event` nunca lanza una excepción por el contenido de un mensaje: devuelve un estado y **todos** los motivos encontrados, que se guardan en `error_message`.
+
+| Estado | Cuándo | Ejemplos |
+|---|---|---|
+| `VALID` | Cumple el contrato | |
+| `INVALID_SCHEMA` | El mensaje no se puede interpretar | No es JSON o no es un objeto, falta un campo, texto en un campo numérico, `year` decimal, `event_time` que no es una fecha |
+| `INVALID_VALUES` | La forma es correcta pero un valor está fuera de rango | Año 2020, variable negativa, puntaje 11, `NaN` |
+| `PREDICTION_ERROR` | El evento era válido pero el modelo falló | Lo asigna el consumer |
+
+Si hay problemas de esquema no se evalúan los rangos. Los campos que sobran se ignoran: el mensaje original queda completo en la tabla cruda.
+
+### Producer
+
+[`kafka/producer.py`](kafka/producer.py) lee el conjunto de prueba (235 registros que el modelo no vio), arma un evento por registro y los publica uno por uno.
+
+| Opción | Por defecto | Qué hace |
+|---|---|---|
+| `--delay` | `0.5` | Segundos de pausa entre eventos (simula la llegada en el tiempo; los 235 tardan unos 2 minutos). |
+| `--limit N` | todos | Envía solo los primeros N registros. |
+| `--with-invalid` | no | Intercala 5 eventos dañados a propósito para mostrar la validación. |
+| `--seed` | `42` | Semilla del orden de envío. |
+
+Decisiones:
+
+- **Orden mezclado y reproducible.** Los registros se mezclan con una semilla fija para que lleguen países y años variados, como en un flujo real, y siempre en el mismo orden.
+- **Entrega confirmada.** El producer es idempotente (`enable.idempotence`): el broker confirma cada evento y descarta los duplicados de un reintento. Se espera la confirmación de cada evento antes de enviar el siguiente y se registra en qué partición y offset quedó.
+- **Fallas claras.** Si Kafka no responde, el topic no existe o un evento no se puede entregar, el envío se detiene con un mensaje y código de salida 1 (130 si se interrumpe con Ctrl+C).
+- **Eventos dañados para la demostración.** Los datos de prueba están limpios, así que sin `--with-invalid` nunca llegaría un evento inválido. Con esa opción el resultado es siempre el mismo: 240 mensajes, de los cuales 235 son `VALID`, 3 `INVALID_SCHEMA` (falta `health`, texto en `gdp`, JSON cortado) y 2 `INVALID_VALUES` (año 2020, `gdp` negativo).
+
+### Reinicio de la demostración
+
+Kafka y PostgreSQL conservan sus datos entre corridas, y cada corrida del producer genera `event_id` nuevos: si se ejecuta dos veces, las predicciones se duplican. [`scripts/reset_demo.py`](scripts/reset_demo.py) deja todo en cero en un solo paso: vacía `raw_happiness_events` y `fact_predictions` (las dimensiones no se tocan), borra el consumer group `happiness-ml-team` y recrea el topic. Las tres cosas van juntas porque, si se recreara el topic sin vaciar las tablas, los offsets volverían a empezar en 0 y chocarían con los ya guardados. Se niega a correr si el consumer sigue activo y no borra volúmenes de Docker.
 
 ## Esquema de la base de datos
 
@@ -131,7 +201,7 @@ _Pendiente._
 
 ## Instrucciones de ejecución
 
-_Parcial: la Parte A y la infraestructura están listas; el producer y el consumer se agregan después._
+_Parcial: la Parte A, la infraestructura y el producer están listos; el consumer se agrega después._
 
 ### Parte A: dataset y modelo
 
@@ -170,4 +240,16 @@ docker compose exec -T postgres psql -U happiness -d happiness -v ON_ERROR_STOP=
 docker compose exec -T postgres psql -U happiness -d happiness -v ON_ERROR_STOP=1 < sql/seed_dimensions.sql
 ```
 
-Las dependencias de Python para conectarse son `confluent-kafka` (Kafka) y `psycopg` (PostgreSQL), ya incluidas en `requirements.txt`.
+Las dependencias de Python para conectarse son `confluent-kafka` (Kafka) y `psycopg` (PostgreSQL), ya incluidas en `requirements.txt`. Los scripts leen los datos de conexión a PostgreSQL de las variables de entorno, del archivo `.env` o de los valores por defecto, en ese orden.
+
+### Parte B: streaming
+
+Con la infraestructura arriba y el entorno virtual activo:
+
+```bash
+python scripts/reset_demo.py                      # deja la demo en cero (pide confirmación; --yes para no preguntar)
+python kafka/producer.py --with-invalid           # 240 eventos, uno cada 0.5 s
+python kafka/producer.py --delay 0 --limit 10     # prueba rápida
+```
+
+El producer registra una línea por evento con el país, el año, la partición, el offset y el `event_id`.
