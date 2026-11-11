@@ -10,6 +10,7 @@ Uso (con Kafka arriba: docker compose up -d --wait):
     python kafka/producer.py --delay 0 --limit 10 prueba rápida
     python kafka/producer.py --with-invalid       agrega 5 eventos dañados a propósito
 
+Si el topic ya tiene mensajes, avisa (sin bloquear) que reenviar duplicaría las predicciones.
 Código de salida: 0 si todo se entregó, 1 si el envío se detuvo por una falla,
 130 si se interrumpió con Ctrl+C.
 """
@@ -21,7 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from confluent_kafka import KafkaException, Producer
+from confluent_kafka import KafkaException, Producer, TopicPartition
+from confluent_kafka.admin import AdminClient, OffsetSpec
 
 from happiness_etl import config
 from happiness_etl.contract import build_event, serialize_event
@@ -146,6 +148,37 @@ def check_topic(producer: Producer, topic: str) -> None:
         )
 
 
+def count_messages(bootstrap_servers: str, topic: str) -> int:
+    """Cuántos mensajes tiene hoy el topic (último offset menos primero, sumado por partición)."""
+    admin = AdminClient({"bootstrap.servers": bootstrap_servers, "log_level": 2})
+    partitions = admin.list_topics(topic, timeout=10).topics[topic].partitions
+
+    def total(spec: OffsetSpec) -> int:
+        futures = admin.list_offsets({TopicPartition(topic, p): spec for p in partitions}, request_timeout=10)
+        return sum(future.result().offset for future in futures.values())
+
+    return total(OffsetSpec.latest()) - total(OffsetSpec.earliest())
+
+
+def warn_if_topic_has_messages(counter: Callable[[str, str], int], bootstrap_servers: str, topic: str) -> None:
+    """Avisa (sin bloquear) si el topic ya tiene mensajes: reenviar duplicaría las predicciones.
+
+    Cada corrida genera event_id nuevos, así que si el consumer ya procesó los
+    mensajes anteriores, los nuevos se sumarían a los mismos países y años.
+    """
+    try:
+        existing = counter(bootstrap_servers, topic)
+    except KafkaException as exc:  # es solo un aviso: si no se puede contar, se sigue
+        logger.debug("No se pudo contar los mensajes del topic: %s", exc)
+        return
+    if existing:
+        logger.warning(
+            "El topic '%s' ya tiene %d mensajes: si el consumer ya los procesó, estos eventos se duplicarán "
+            "en la base. 'python scripts/reset_demo.py' deja todo en cero.",
+            topic, existing,
+        )
+
+
 @dataclass
 class SendStats:
     """Conteo del envío. Se va actualizando para poder informar aunque se interrumpa."""
@@ -235,7 +268,11 @@ def create_producer(bootstrap_servers: str) -> Producer:
     })
 
 
-def main(argv: list[str] | None = None, producer_factory: Callable[[str], Any] = create_producer) -> int:
+def main(
+    argv: list[str] | None = None,
+    producer_factory: Callable[[str], Any] = create_producer,
+    message_counter: Callable[[str, str], int] = count_messages,
+) -> int:
     args = parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
 
@@ -251,6 +288,7 @@ def main(argv: list[str] | None = None, producer_factory: Callable[[str], Any] =
     code = 0
     try:
         check_topic(producer, args.topic)
+        warn_if_topic_has_messages(message_counter, args.bootstrap_servers, args.topic)
         logger.info(
             "Enviando %d eventos a '%s' en %s (pausa de %s s)", stats.total, args.topic, args.bootstrap_servers, args.delay
         )

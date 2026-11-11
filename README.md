@@ -121,6 +121,7 @@ Decisiones:
 
 - **Orden mezclado y reproducible.** Los registros se mezclan con una semilla fija para que lleguen países y años variados, como en un flujo real, y siempre en el mismo orden.
 - **Entrega confirmada.** El producer es idempotente (`enable.idempotence`): el broker confirma cada evento y descarta los duplicados de un reintento. Se espera la confirmación de cada evento antes de enviar el siguiente y se registra en qué partición y offset quedó.
+- **Aviso contra duplicados.** Antes de enviar, el producer cuenta los mensajes que ya hay en el topic. Si hay alguno, avisa (sin bloquear) que reenviar duplicaría las predicciones y señala `scripts/reset_demo.py`.
 - **Fallas claras.** Si Kafka no responde, el topic no existe o un evento no se puede entregar, el envío se detiene con un mensaje y código de salida 1 (130 si se interrumpe con Ctrl+C).
 - **Eventos dañados para la demostración.** Los datos de prueba están limpios, así que sin `--with-invalid` nunca llegaría un evento inválido. Con esa opción el resultado es siempre el mismo: 240 mensajes, de los cuales 235 son `VALID`, 3 `INVALID_SCHEMA` (falta `health`, texto en `gdp`, JSON cortado) y 2 `INVALID_VALUES` (año 2020, `gdp` negativo).
 

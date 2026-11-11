@@ -6,6 +6,7 @@ from collections import Counter
 from types import SimpleNamespace
 
 import pytest
+from confluent_kafka import KafkaError, KafkaException
 
 from happiness_etl import config
 from happiness_etl.contract import INVALID_SCHEMA, INVALID_VALUES, VALID, validate_event
@@ -54,8 +55,10 @@ class FakeKafka:
         return 0
 
 
-def run(argv, fake):
-    return producer.main(["--delay", "0", *argv], producer_factory=lambda servers: fake)
+def run(argv, fake, existing=0, counter=None):
+    """Corre main con el broker falso; 'existing' = mensajes que el topic ya tendría."""
+    counter = counter or (lambda servers, topic: existing)
+    return producer.main(["--delay", "0", *argv], producer_factory=lambda servers: fake, message_counter=counter)
 
 
 # --- Orden de envío ----------------------------------------------------------
@@ -166,6 +169,30 @@ def test_waits_for_a_topic_that_is_still_being_created(caplog, monkeypatch):
     with caplog.at_level("INFO", logger="producer"):
         assert run(["--limit", "3"], fake) == 0
     assert len(fake.sent) == 3 and len(waits) == 2 and "aún no existe" in caplog.text
+
+
+def test_warns_when_the_topic_already_has_messages(caplog):
+    fake = FakeKafka()
+    with caplog.at_level("WARNING", logger="producer"):
+        assert run(["--limit", "3"], fake, existing=240) == 0
+    assert len(fake.sent) == 3  # solo avisa: el envío continúa
+    assert "ya tiene 240 mensajes" in caplog.text and "reset_demo.py" in caplog.text
+
+
+def test_no_warning_when_the_topic_is_empty(caplog):
+    with caplog.at_level("WARNING", logger="producer"):
+        assert run(["--limit", "3"], FakeKafka(), existing=0) == 0
+    assert "ya tiene" not in caplog.text
+
+
+def test_failure_counting_messages_does_not_stop_the_run(caplog):
+    def broken(servers, topic):
+        raise KafkaException(KafkaError(KafkaError._TRANSPORT))
+
+    fake = FakeKafka()
+    with caplog.at_level("WARNING", logger="producer"):
+        assert run(["--limit", "3"], fake, counter=broken) == 0
+    assert len(fake.sent) == 3 and "ya tiene" not in caplog.text
 
 
 def test_missing_input_file_is_reported_without_traceback(caplog, tmp_path):
