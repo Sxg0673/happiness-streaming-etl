@@ -1,4 +1,4 @@
-"""Validate: compuerta de calidad del dataset unificado (Parte A).
+"""Validate: compuerta de calidad del dataset unificado.
 
 Dos momentos:
   1. validate_dataset: antes de cargar, revisa las reglas del esquema unificado.
@@ -7,9 +7,9 @@ Dos momentos:
 
 Si alguna regla falla se juntan TODAS las fallas y se lanza ValidationError:
 el pipeline se detiene antes de escribir (o avisa que lo escrito no coincide).
-Las reglas están escritas de forma declarativa (nombre + chequeo) para poder
-llevarlas a Great Expectations más adelante si hace falta.
-La validación del contrato del evento (Parte B) está en contract.py y usa los
+Las reglas están escritas de forma declarativa (nombre + chequeo), así cada
+falla se reporta con un nombre legible.
+La validación del contrato del evento está en contract.py y usa los
 mismos rangos (años, variables entre 0 y FEATURE_MAX y rango del puntaje, desde config.py).
 """
 import logging

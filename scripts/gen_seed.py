@@ -25,7 +25,7 @@ MANUAL_REGIONS = {"Gambia": "Sub-Saharan Africa"}
 
 
 def countries():
-    """Países del dataset unificado, con los nombres canónicos de la Parte A."""
+    """Países del dataset unificado, con sus nombres canónicos."""
     return sorted(transform(clean_all(read_all()))[COUNTRY].unique())
 
 

@@ -63,7 +63,7 @@ def insert_raw(
     timestamp: datetime | None,
     payload: bytes | None,
 ) -> tuple[RawEvent, str | None]:
-    """Paso 1: guarda el mensaje crudo antes de validar o predecir.
+    """Guarda el mensaje crudo antes de validar o predecir.
 
     Devuelve la fila y la nota de to_text. Si el mensaje ya estaba guardado
     (reentrega), devuelve la fila existente con su estado actual.

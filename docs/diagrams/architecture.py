@@ -27,7 +27,7 @@ def box(color, fill):
             "pencolor": color, "penwidth": "1.5", "style": "rounded", "margin": "30"}
 
 
-with Diagram("Workshop-3 · ETL en streaming con Kafka y Machine Learning", filename=str(OUT), show=False,
+with Diagram("Happiness Streaming ETL · Kafka y Machine Learning", filename=str(OUT), show=False,
              direction="LR", outformat="png", graph_attr=graph, node_attr=node, edge_attr=edge):
     with Cluster("Parte A · preparación (una vez, sin Kafka)", graph_attr=box(MUTED, "#f7f3ef")):
         raw = MultipleDocuments("World Happiness\n2015-2019\n5 CSV")

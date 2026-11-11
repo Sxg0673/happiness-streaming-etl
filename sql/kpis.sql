@@ -1,5 +1,5 @@
 -- =============================================================================
--- KPI del dashboard · Workshop-3 (Paso 8 del taller)
+-- KPI del dashboard · happiness-streaming-etl
 --
 -- Estas consultas calculan con SQL las mismas cifras que muestra el dashboard de
 -- Tableau (dashboards/dashboard.twb). Sirven para dos cosas:

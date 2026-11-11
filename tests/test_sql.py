@@ -41,13 +41,13 @@ def test_seed_covers_every_year():
 
 @pytest.mark.parametrize("tabla", ["raw_happiness_events", "fact_predictions", "dim_country", "dim_date"])
 def test_required_tables_exist(tabla):
-    """Tablas mínimas que pide el PDF (Paso 7)."""
+    """Tablas mínimas del modelo de predicciones."""
     assert f"CREATE TABLE IF NOT EXISTS {tabla} (" in CREATE
 
 
 @pytest.mark.parametrize("estado", ["VALID", "INVALID_SCHEMA", "INVALID_VALUES", "PREDICTION_ERROR"])
-def test_raw_status_includes_pdf_statuses(estado):
-    """Los estados de procesamiento del PDF están permitidos en raw_happiness_events."""
+def test_raw_status_includes_processing_statuses(estado):
+    """Los estados de procesamiento están permitidos en raw_happiness_events."""
     check = re.search(r"CONSTRAINT ck_raw_status CHECK \((.*?)\)\s*,", CREATE, re.S).group(1)
     assert f"'{estado}'" in check
 
@@ -56,7 +56,7 @@ def test_raw_status_includes_pdf_statuses(estado):
     "prediction_id", "raw_event_id", "country_id", "date_id", "actual_score",
     "predicted_score", "prediction_error", "event_time", "prediction_timestamp",
 ])
-def test_fact_has_suggested_columns(columna):
-    """Columnas sugeridas por el PDF para fact_predictions (Pasos 7 y 8)."""
+def test_fact_has_required_columns(columna):
+    """Columnas que debe tener fact_predictions para trazar y evaluar cada predicción."""
     fact = CREATE.split("CREATE TABLE IF NOT EXISTS fact_predictions (", 1)[1].split(");", 1)[0]
     assert re.search(rf"^\s+{columna}\s", fact, re.M), columna

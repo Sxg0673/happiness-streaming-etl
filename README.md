@@ -63,10 +63,10 @@ data/raw/*.csv -> extract -> clean -> transform -> validate (compuerta de calida
 | `transform.py` | Entre años: unir, unificar nombres de país, interpolar valores faltantes y ordenar |
 | `validate.py` | Compuerta de calidad antes de cargar y reconciliación después de cargar |
 | `load.py` | Escritura atómica del CSV y lectura con tipos del dataset unificado |
-| `contract.py` | Parte B: contrato del evento (armar y validar eventos) |
-| `db.py` | Parte B: datos de conexión a PostgreSQL (entorno, `.env` o valores por defecto) |
-| `inference.py` | Parte B: carga `model.pkl` y predice un evento |
-| `storage.py` | Parte B: lo que el consumer escribe en PostgreSQL (crudo, estado y predicción) |
+| `contract.py` | Streaming: contrato del evento (armar y validar eventos) |
+| `db.py` | Streaming: datos de conexión a PostgreSQL (entorno, `.env` o valores por defecto) |
+| `inference.py` | Streaming: carga `model.pkl` y predice un evento |
+| `storage.py` | Streaming: lo que el consumer escribe en PostgreSQL (crudo, estado y predicción) |
 
 Los pasos intermedios se pasan en memoria; solo el dataset final ya validado se escribe en disco, porque los notebooks lo leen desde procesos separados. El archivo no se versiona: se regenera con `main.py`.
 
@@ -74,7 +74,7 @@ Los pasos intermedios se pasan en memoria; solo el dataset final ya validado se 
 
 ## Decisiones de limpieza de datos
 
-El perfilado de calidad está en [`notebooks/profiling.ipynb`](notebooks/profiling.ipynb) (Paso 1 del taller). Decisiones principales:
+El perfilado de calidad está en [`notebooks/profiling.ipynb`](notebooks/profiling.ipynb) . Decisiones principales:
 
 | Hallazgo | Decisión |
 |---|---|
@@ -94,7 +94,7 @@ El análisis está en [`notebooks/eda.ipynb`](notebooks/eda.ipynb) y el entrenam
 
 | Decisión | Motivo |
 |---|---|
-| División 70/30 con semilla fija (`random_state = 42`), estratificada por año | La pide el taller. Estratificar deja la misma proporción de cada año en entrenamiento (547 filas) y en prueba (235). |
+| División 70/30 con semilla fija (`random_state = 42`), estratificada por año | Proporción estándar para un dataset de este tamaño. Estratificar deja la misma proporción de cada año en entrenamiento (547 filas) y en prueba (235). |
 | Variables: `gdp`, `family`, `health`, `freedom` y `corruption`, estandarizadas | Son las que explican el puntaje. Se estandarizan para que los coeficientes sean comparables entre sí. |
 | `generosity` se descarta | Su coeficiente no es significativo (p = 0.45) y quitarla no cambia el error en validación cruzada (p = 0.53). Se prefiere el modelo más simple. El contrato del evento la sigue validando. |
 | `year` entra como variable categórica (one-hot, 2015 como base) | Cada reporte anual tiene su propio nivel: en validación cruzada reduce el RMSE un 4.4 % (p = 0.023). El efecto no crece año a año (2016 sube, 2017-2019 bajan respecto a 2015), por eso no se usa como número. |
@@ -104,7 +104,7 @@ El análisis está en [`notebooks/eda.ipynb`](notebooks/eda.ipynb) y el entrenam
 
 Resultado sobre los 235 registros de prueba: **MAE 0.421, RMSE 0.540, R² 0.804 y sesgo +0.039**, frente a MAE 1.047 de predecir siempre el promedio del año. Son las mismas cifras que calcula el dashboard sobre lo que llegó por Kafka (`models/metrics.json`, `sql/kpis.sql`).
 
-**Limitación.** La división es por fila (país y año), no por país: ninguna fila de prueba se usó para entrenar, pero el 96 % de ellas son de un país que tiene otros años en entrenamiento. Como los indicadores de un país cambian poco de un año a otro, el error medido es algo optimista para países que el modelo nunca vio (solo 5 países están únicamente en prueba). Una evaluación más exigente dividiría por país; aquí se mantiene el 70/30 que pide el taller.
+**Limitación.** La división es por fila (país y año), no por país: ninguna fila de prueba se usó para entrenar, pero el 96 % de ellas son de un país que tiene otros años en entrenamiento. Como los indicadores de un país cambian poco de un año a otro, el error medido es algo optimista para países que el modelo nunca vio (solo 5 países están únicamente en prueba). Una evaluación más exigente dividiría por país (todos los años de un país en el mismo grupo).
 
 ## Pipeline de Kafka y contrato del evento
 
@@ -139,7 +139,7 @@ Cada mensaje es un objeto JSON en UTF-8 con estos once campos. La llave del mens
 | `year` | entero | Entre 2015 y 2019. No se aceptan `"2019"` ni `2019.5`. |
 | `gdp`, `family`, `health`, `freedom`, `generosity`, `corruption` | número | Finito, entre 0 y 3. El máximo real en los datos es 2.096; el tope de 3 (`FEATURE_MAX` en `config.py`) frena valores absurdos que el modelo extrapolaría sin avisar. |
 | `actual_happiness_score` | número | Entre 0 y 10. Es el puntaje real: viaja solo para medir el error, **nunca es una variable del modelo**. |
-| `event_time` | texto | Fecha y hora ISO-8601: el momento en que el producer emitió el evento, en UTC. Si llega sin zona horaria (como en el ejemplo del taller) se interpreta como UTC. |
+| `event_time` | texto | Fecha y hora ISO-8601: el momento en que el producer emitió el evento, en UTC. Si llega sin zona horaria (por ejemplo `2026-10-30T15:30:00`) se interpreta como UTC. |
 
 El contrato vive en un solo módulo, [`src/happiness_etl/contract.py`](src/happiness_etl/contract.py): el producer arma los eventos con `build_event` y el consumer valida cada mensaje con `validate_event`. Los rangos son los mismos de la compuerta de calidad de la Parte A (salen de `config.py`), así que el streaming acepta exactamente lo que el ETL dio por limpio.
 
@@ -262,7 +262,7 @@ erDiagram
 
 | Tabla | Grano | Decisiones |
 |---|---|---|
-| `raw_happiness_events` | Un mensaje de Kafka | Staging, no dimensión. El consumer inserta **antes** de validar; `raw_payload` es el texto exacto (conserva incluso un JSON mal formado). `status`: `RECEIVED` (guardado, aún sin procesar) y los cuatro del taller: `VALID`, `INVALID_SCHEMA`, `INVALID_VALUES`, `PREDICTION_ERROR`. Un estado inválido exige `error_message`. `(topic, partition, offset)` es único, así una reentrega de Kafka no duplica filas. |
+| `raw_happiness_events` | Un mensaje de Kafka | Staging, no dimensión. El consumer inserta **antes** de validar; `raw_payload` es el texto exacto (conserva incluso un JSON mal formado). `status`: `RECEIVED` (guardado, aún sin procesar) y los cuatro estados finales: `VALID`, `INVALID_SCHEMA`, `INVALID_VALUES`, `PREDICTION_ERROR`. Un estado inválido exige `error_message`. `(topic, partition, offset)` es único, así una reentrega de Kafka no duplica filas. |
 | `fact_predictions` | Una predicción por evento válido | `raw_event_id` es único y enlaza cada predicción con el mensaje que la originó. `prediction_error = predicted_score − actual_score` (con signo: positivo = sobreestima) y `absolute_error` son **columnas generadas**: las calcula PostgreSQL, por lo que nunca quedan inconsistentes. `model_version` identifica el modelo que predijo. |
 | `dim_country` | Un país | `region` viene de la columna Region de 2015-2016; Gambia (solo aparece en 2019) se asignó a mano a Sub-Saharan Africa. Un país nuevo se inserta con región vacía en lugar de rechazar el evento. |
 | `dim_date` | Un reporte anual | `date_id` = año. Es el eje temporal del análisis (tendencia del error por año). El momento del streaming queda en `event_time` y `prediction_timestamp`: todos los eventos se emiten el mismo día, así que una dimensión diaria no aportaría. |
@@ -273,7 +273,7 @@ erDiagram
 
 ![Dashboard sin filtros](docs/img/dashboard_general.png)
 
-| Requisito del taller | Dónde está |
+| KPI | Dónde está |
 |---|---|
 | Error promedio de predicción | Tarjetas MAE, RMSE, R² y sesgo de la barra lateral, y barras "Error por región" |
 | Predicciones por país | Mapa "Error de predicción por país" (color = error absoluto medio) y tabla de la derecha (real, predicho y error por país) |
@@ -308,6 +308,8 @@ python -m pytest -q            # ejecuta las pruebas
 ```
 
 `main.py` termina con código 1 y lista las reglas incumplidas si la compuerta de calidad detiene el pipeline.
+
+El modelo (`models/model.pkl`, con sus métricas en `models/metrics.json`) y el 30 % de prueba (`data/streaming/happiness_test.csv`) ya están versionados, así que la Parte B funciona sin reentrenar. Para regenerarlos, ejecutar en orden los notebooks `profiling.ipynb`, `eda.ipynb` y `model_training.ipynb` (Jupyter o VS Code, con el kernel del entorno virtual); el último sobrescribe esos tres archivos con la misma partición (semilla 42).
 
 ### Infraestructura: Kafka y PostgreSQL
 

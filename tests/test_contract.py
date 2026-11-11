@@ -16,8 +16,8 @@ from happiness_etl.contract import (
 )
 from happiness_etl.load import read_processed
 
-# Ejemplo del enunciado del taller, tal cual (event_time sin zona horaria)
-PDF_EXAMPLE = {
+# Evento de referencia del contrato (event_time sin zona horaria)
+SAMPLE_EVENT = {
     "event_id": "E001",
     "country": "Colombia",
     "year": 2019,
@@ -35,14 +35,14 @@ ROW = {"country": "Colombia", "year": 2019, "gdp": 1.2, "family": 0.8, "health":
 
 
 def changed(**fields):
-    """El ejemplo del taller con algunos campos cambiados."""
-    return {**PDF_EXAMPLE, **fields}
+    """El evento de referencia con algunos campos cambiados."""
+    return {**SAMPLE_EVENT, **fields}
 
 
 # --- Eventos válidos ---------------------------------------------------------
 
-def test_pdf_example_is_valid_and_naive_time_is_utc():
-    result = validate_event(PDF_EXAMPLE)
+def test_sample_event_is_valid_and_naive_time_is_utc():
+    result = validate_event(SAMPLE_EVENT)
     assert result.status == VALID and result.is_valid
     assert result.errors == () and result.error_message is None
     assert result.event["event_time"] == datetime(2026, 10, 30, 15, 30, tzinfo=timezone.utc)
@@ -50,7 +50,7 @@ def test_pdf_example_is_valid_and_naive_time_is_utc():
 
 @pytest.mark.parametrize("as_type", [dict, json.dumps, lambda e: json.dumps(e).encode("utf-8")])
 def test_accepts_dict_text_and_bytes(as_type):
-    assert validate_event(as_type(PDF_EXAMPLE)).is_valid
+    assert validate_event(as_type(SAMPLE_EVENT)).is_valid
 
 
 def test_valid_event_is_interpreted_with_python_types():
@@ -100,7 +100,7 @@ def test_unreadable_message_is_invalid_schema(raw, reason):
 
 @pytest.mark.parametrize("field", contract.EVENT_FIELDS)
 def test_each_missing_field_is_invalid_schema(field):
-    event = {k: v for k, v in PDF_EXAMPLE.items() if k != field}
+    event = {k: v for k, v in SAMPLE_EVENT.items() if k != field}
     result = validate_event(event)
     assert result.status == INVALID_SCHEMA
     assert result.errors == (f"falta el campo '{field}'",)
@@ -146,7 +146,7 @@ def test_out_of_range_is_invalid_values(field, value):
 
 def test_nan_written_in_the_json_text_is_invalid_values():
     """json.loads acepta NaN e Infinity aunque no son JSON estándar: no deben llegar al modelo."""
-    text = json.dumps(PDF_EXAMPLE).replace("1.2", "NaN").replace("0.8", "-Infinity")
+    text = json.dumps(SAMPLE_EVENT).replace("1.2", "NaN").replace("0.8", "-Infinity")
     result = validate_event(text)
     assert result.status == INVALID_VALUES and len(result.errors) == 2
 

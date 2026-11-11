@@ -1,17 +1,17 @@
-"""Contrato del evento de felicidad (Parte B).
+"""Contrato del evento de felicidad.
 
 Única fuente de verdad de la forma del evento que viaja por Kafka: el producer
 arma cada evento con build_event y el consumer valida cada mensaje con
 validate_event antes de predecir.
 
-Estados de validación (los del taller):
+Estados de validación:
   VALID            cumple el contrato.
   INVALID_SCHEMA   no se puede interpretar: no es JSON, falta un campo o un
                    campo tiene un tipo que no corresponde.
   INVALID_VALUES   la forma es correcta pero algún valor está fuera de rango.
 PREDICTION_ERROR no sale de aquí: lo asigna el consumer si el modelo falla.
 
-Los rangos son los de la compuerta de calidad de la Parte A (config.py), para
+Los rangos son los de la compuerta de calidad del ETL (config.py), para
 que el streaming acepte exactamente lo que el ETL dio por limpio.
 Aquí no hay Kafka ni base de datos: solo funciones puras, fáciles de probar.
 """
@@ -31,7 +31,7 @@ ACTUAL_SCORE = "actual_happiness_score"  # el puntaje real: solo para evaluar, n
 EVENT_TIME = "event_time"
 
 NUMERIC_FIELDS = (*FEATURES, ACTUAL_SCORE)
-# Orden del formato JSON exigido por el taller
+# Orden de los campos en el JSON del evento
 EVENT_FIELDS = (EVENT_ID, COUNTRY, YEAR, *FEATURES, ACTUAL_SCORE, EVENT_TIME)
 
 # Estados de un evento crudo. Coinciden con el CHECK de raw_happiness_events.
@@ -73,8 +73,8 @@ def format_event_time(moment: datetime) -> str:
 def parse_event_time(value: str) -> datetime:
     """Texto ISO-8601 -> datetime con zona horaria. Lanza ValueError si no lo es.
 
-    El producer siempre emite en UTC. Un texto sin zona (como el ejemplo del
-    taller, "2026-10-30T15:30:00") se acepta y se interpreta como UTC.
+    El producer siempre emite en UTC. Un texto sin zona (por ejemplo
+    "2026-10-30T15:30:00") se acepta y se interpreta como UTC.
     """
     try:
         date.fromisoformat(value)

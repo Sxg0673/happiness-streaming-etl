@@ -93,7 +93,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       # El esquema y los datos de referencia se cargan solo la primera vez (volumen vacío),
-      # en este orden. Ambos scripts son idempotentes: para reaplicarlos más adelante
+      # en este orden. Ambos scripts son idempotentes: para reaplicarlos sobre una base existente
       # ver "Instrucciones de ejecución" del README.
       - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/01_create_tables.sql:ro
       - ./sql/seed_dimensions.sql:/docker-entrypoint-initdb.d/02_seed_dimensions.sql:ro

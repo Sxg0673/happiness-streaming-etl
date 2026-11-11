@@ -24,7 +24,7 @@ TARGET = "happiness_score"
 UNIFIED_COLUMNS = (COUNTRY, YEAR, *FEATURES, TARGET)
 
 # Rango válido del puntaje de felicidad (escala de Cantril). Lo comparten la
-# compuerta de calidad de la Parte A (validate.py) y el contrato del evento
+# compuerta de calidad del ETL (validate.py) y el contrato del evento
 # (contract.py), para que el streaming acepte lo mismo que el ETL dio por limpio.
 SCORE_RANGE = (0.0, 10.0)
 
@@ -33,25 +33,25 @@ SCORE_RANGE = (0.0, 10.0)
 # extrapolaría sin avisar. Lo usan validate.py y contract.py.
 FEATURE_MAX = 3.0
 
-# División entrenamiento/prueba (sugerencia del PDF: 70/30), estratificada por año.
+# División entrenamiento/prueba 70/30, estratificada por año.
 # La comparten eda.ipynb y model_training.ipynb para que sea la misma partición.
 TEST_SIZE = 0.3
 RANDOM_STATE = 42
 
-# Modelo (D-031/D-032): regresión lineal con estas variables numéricas + 'year'
+# Modelo: regresión lineal con estas variables numéricas + 'year'
 # como categoría. 'generosity' se descartó en el EDA (no aporta al error de
 # validación cruzada). 'country' y el puntaje real nunca son variables.
 MODEL_FEATURES = ("gdp", "family", "health", "freedom", "corruption")
 
 # Artefactos del entrenamiento. El modelo y sus métricas se versionan (son
-# pequeños); el 30 % de prueba es lo que transmite el producer (D-034).
+# pequeños); el 30 % de prueba es lo que transmite el producer.
 MODELS_DIR = ROOT_DIR / "models"
 MODEL_FILE = MODELS_DIR / "model.pkl"
 METRICS_FILE = MODELS_DIR / "metrics.json"
 STREAMING_DIR = ROOT_DIR / "data" / "streaming"
 STREAMING_FILE = STREAMING_DIR / "happiness_test.csv"
 
-# Streaming (Parte B). Nombres exigidos por el taller. La dirección es 127.0.0.1
+# Streaming: broker, topic y consumer group. La dirección es 127.0.0.1
 # y no "localhost": el broker se anuncia así (ver docker-compose.yml) y con
 # "localhost" el cliente intenta primero IPv6, donde no hay nadie escuchando.
 KAFKA_BOOTSTRAP_SERVERS = "127.0.0.1:9092"

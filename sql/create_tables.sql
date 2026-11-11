@@ -1,5 +1,5 @@
 -- =============================================================================
--- Esquema analítico de predicciones · Workshop-3 (Paso 7 del taller)
+-- Esquema analítico de predicciones · happiness-streaming-etl
 --
 -- raw_happiness_events  staging/trazabilidad: cada mensaje de Kafka tal cual llegó,
 --                        con su estado de procesamiento. NO es una dimensión.
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS raw_happiness_events (
     kafka_timestamp  TIMESTAMPTZ,
     raw_payload      TEXT         NOT NULL,
     -- RECEIVED: guardado y aún sin procesar (si el consumer cae a mitad de camino,
-    -- la fila queda así y se puede reprocesar). Los otros cuatro estados son los del PDF.
+    -- la fila queda así y se puede reprocesar). Los otros cuatro son estados finales.
     status           TEXT         NOT NULL DEFAULT 'RECEIVED',
     error_message    TEXT,
     received_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),

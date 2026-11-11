@@ -1,4 +1,4 @@
-// Modelo dimensional de predicciones · Workshop-3 (happiness-streaming-etl)
+// Modelo dimensional de predicciones · happiness-streaming-etl
 // Pegar en https://dbdiagram.io para verlo. Fuente de verdad del esquema: sql/create_tables.sql
 
 Project happiness_streaming_etl {

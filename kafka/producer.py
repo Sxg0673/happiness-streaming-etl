@@ -35,7 +35,7 @@ DEFAULT_DELAY = 0.3  # segundos entre eventos (a 0.1-0.2 s el producer sigue usa
 DELIVERY_TIMEOUT = 15  # segundos que se espera la confirmación de cada evento
 TOPIC_WAIT = 30  # segundos que se espera a que el topic exista antes de rendirse
 
-# Fila base de los eventos dañados (los valores del ejemplo del taller)
+# Fila base de los eventos dañados (un evento válido de referencia, Colombia 2019)
 _INVALID_BASE = {
     "country": "Colombia", "year": 2019, "gdp": 1.2, "family": 0.8, "health": 0.9,
     "freedom": 0.6, "generosity": 0.3, "corruption": 0.1, "happiness_score": 6.2,
@@ -144,7 +144,7 @@ def check_topic(producer: Producer, topic: str) -> None:
         time.sleep(1)
     if len(found.partitions) != config.KAFKA_TOPIC_PARTITIONS:
         logger.warning(
-            "El topic tiene %d particiones y el taller pide %d", len(found.partitions), config.KAFKA_TOPIC_PARTITIONS
+            "El topic tiene %d particiones y se esperaban %d", len(found.partitions), config.KAFKA_TOPIC_PARTITIONS
         )
 
 

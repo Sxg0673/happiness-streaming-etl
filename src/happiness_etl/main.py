@@ -1,4 +1,4 @@
-"""Orquestador del ETL de la Parte A.
+"""Orquestador del ETL batch (de los CSV anuales al dataset unificado).
 
 Orden: extract -> clean -> transform -> validate (compuerta) -> load -> reconciliación.
 Uso: python -m happiness_etl.main

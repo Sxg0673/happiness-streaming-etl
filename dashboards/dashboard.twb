@@ -3802,7 +3802,7 @@
             <zone fixed-size='300' h='100000' id='4' is-fixed='true' param='vert' type-v2='layout-flow' w='20833' x='0' y='0'>
               <zone fixed-size='104' h='12874' id='5' is-fixed='true' type-v2='text' w='18611' x='1111' y='1839'>
                 <formatted-text>
-                  <run bold='true' fontcolor='#f4b6c6' fontsize='9'>WORKSHOP 3 · ETL EN STREAMING</run>
+                  <run bold='true' fontcolor='#f4b6c6' fontsize='9'>ETL EN STREAMING · KAFKA + ML</run>
                   <run>Æ&#10;</run>
                   <run bold='true' fontcolor='#ffffff' fontsize='20'>Felicidad mundial</run>
                   <run>Æ&#10;</run>
