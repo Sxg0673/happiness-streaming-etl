@@ -196,6 +196,6 @@ def test_bad_arguments_are_rejected(argv):
 
 def test_default_arguments():
     args = producer.parse_args([])
-    assert (args.delay, args.limit, args.with_invalid, args.seed) == (0.5, None, False, config.RANDOM_STATE)
+    assert (args.delay, args.limit, args.with_invalid, args.seed) == (0.3, None, False, config.RANDOM_STATE)
     assert args.input == config.STREAMING_FILE
     assert (args.bootstrap_servers, args.topic) == ("127.0.0.1:9092", "happiness-events")

@@ -112,7 +112,7 @@ Si hay problemas de esquema no se evalúan los rangos. Los campos que sobran se 
 
 | Opción | Por defecto | Qué hace |
 |---|---|---|
-| `--delay` | `0.5` | Segundos de pausa entre eventos (simula la llegada en el tiempo; los 235 tardan unos 2 minutos). |
+| `--delay` | `0.3` | Segundos de pausa entre eventos (simula la llegada en el tiempo; los 235 tardan poco más de un minuto). |
 | `--limit N` | todos | Envía solo los primeros N registros. |
 | `--with-invalid` | no | Intercala 5 eventos dañados a propósito para mostrar la validación. |
 | `--seed` | `42` | Semilla del orden de envío. |
@@ -248,7 +248,7 @@ Con la infraestructura arriba y el entorno virtual activo:
 
 ```bash
 python scripts/reset_demo.py                      # deja la demo en cero (pide confirmación; --yes para no preguntar)
-python kafka/producer.py --with-invalid           # 240 eventos, uno cada 0.5 s
+python kafka/producer.py --with-invalid           # 240 eventos, uno cada 0.3 s
 python kafka/producer.py --delay 0 --limit 10     # prueba rápida
 ```
 

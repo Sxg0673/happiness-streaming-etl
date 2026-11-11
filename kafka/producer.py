@@ -6,7 +6,7 @@ happiness-events usando el país como llave, uno por uno y con una pausa
 configurable entre eventos.
 
 Uso (con Kafka arriba: docker compose up -d --wait):
-    python kafka/producer.py                      235 eventos, 0.5 s entre cada uno
+    python kafka/producer.py                      235 eventos, 0.3 s entre cada uno
     python kafka/producer.py --delay 0 --limit 10 prueba rápida
     python kafka/producer.py --with-invalid       agrega 5 eventos dañados a propósito
 
@@ -29,7 +29,7 @@ from happiness_etl.load import read_processed
 
 logger = logging.getLogger("producer")
 
-DEFAULT_DELAY = 0.5  # segundos entre eventos
+DEFAULT_DELAY = 0.3  # segundos entre eventos (a 0.1-0.2 s el producer sigue usando <1 % de CPU)
 DELIVERY_TIMEOUT = 15  # segundos que se espera la confirmación de cada evento
 TOPIC_WAIT = 30  # segundos que se espera a que el topic exista antes de rendirse
 
