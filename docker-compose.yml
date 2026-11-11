@@ -1,6 +1,6 @@
 # Infraestructura local del proyecto: Kafka (modo KRaft, sin ZooKeeper) y PostgreSQL.
 # El producer, el consumer y los notebooks corren en el venv, fuera de contenedores,
-# y se conectan por localhost.
+# y se conectan por 127.0.0.1 (no "localhost": ver el comentario del puerto de Kafka).
 #
 #   docker compose up -d      levanta todo y crea el topic (idempotente)
 #   docker compose ps         estado de los servicios
