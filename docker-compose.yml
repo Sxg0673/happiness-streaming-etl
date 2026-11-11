@@ -1,0 +1,103 @@
+# Infraestructura local del proyecto: Kafka (modo KRaft, sin ZooKeeper) y PostgreSQL.
+# El producer, el consumer y los notebooks corren en el venv, fuera de contenedores,
+# y se conectan por localhost.
+#
+#   docker compose up -d      levanta todo y crea el topic (idempotente)
+#   docker compose ps         estado de los servicios
+#   docker compose down       detiene y borra los contenedores; los datos se conservan
+#
+# No usar "docker compose down -v": borra los volúmenes (eventos y predicciones).
+
+name: happiness-streaming-etl
+
+services:
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: happiness-kafka
+    ports:
+      # Solo accesible desde este equipo. El broker se anuncia como 127.0.0.1:9092 (y no
+      # "localhost") porque Docker publica el puerto solo en IPv4: con "localhost" el cliente
+      # prueba primero IPv6, falla y llena el registro de errores antes de usar IPv4.
+      - "127.0.0.1:9092:9092"
+    environment:
+      # Un solo nodo que hace de broker y de controlador (KRaft).
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      # Directorio de datos = el del volumen. Sin esta línea la imagen guarda en /tmp
+      # (dentro del contenedor) y el topic y los offsets se pierden al recrearlo, mientras
+      # Postgres sí conserva los eventos: los offsets reiniciados chocarían con los guardados.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # Con un solo broker, todo se replica una vez.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # El topic se crea explícitamente (kafka-init) con 3 particiones: si el producer
+      # escribiera mal el nombre, fallaría en lugar de crear un topic con otra configuración.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Memoria acotada: el equipo tiene 8 GB.
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    mem_limit: 1g
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "KAFKA_HEAP_OPTS='-Xmx128m' /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 20s
+
+  # Crea el topic y termina. Comparte la red del broker para que la dirección que el
+  # broker anuncia (127.0.0.1:9092) funcione también desde este contenedor.
+  kafka-init:
+    image: apache/kafka:3.9.1
+    container_name: happiness-kafka-init
+    network_mode: "service:kafka"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_HEAP_OPTS: "-Xmx128m"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092
+        --create --if-not-exists --topic happiness-events
+        --partitions 3 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092
+        --describe --topic happiness-events
+    restart: "no"
+
+  postgres:
+    image: postgres:16.15
+    container_name: happiness-postgres
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-happiness}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-happiness}
+      POSTGRES_DB: ${POSTGRES_DB:-happiness}
+    mem_limit: 512m
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # El esquema y los datos de referencia se cargan solo la primera vez (volumen vacío),
+      # en este orden. Ambos scripts son idempotentes: para reaplicarlos más adelante
+      # ver "Instrucciones de ejecución" del README.
+      - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/01_create_tables.sql:ro
+      - ./sql/seed_dimensions.sql:/docker-entrypoint-initdb.d/02_seed_dimensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  kafka-data:
+  postgres-data:
