@@ -131,7 +131,9 @@ _Pendiente._
 
 ## Instrucciones de ejecución
 
-_Parcial: por ahora solo la Parte A._
+_Parcial: la Parte A y la infraestructura están listas; el producer y el consumer se agregan después._
+
+### Parte A: dataset y modelo
 
 ```bash
 python3.12 -m venv .venv
@@ -143,3 +145,29 @@ python -m pytest -q            # ejecuta las pruebas
 ```
 
 `main.py` termina con código 1 y lista las reglas incumplidas si la compuerta de calidad detiene el pipeline.
+
+### Infraestructura: Kafka y PostgreSQL
+
+Requiere Docker Desktop en marcha. El producer, el consumer y los notebooks corren en el entorno virtual y se conectan por `127.0.0.1`.
+
+```bash
+docker compose up -d --wait   # levanta Kafka y PostgreSQL, crea el topic y carga el esquema
+docker compose ps             # estado de los servicios
+docker compose down           # detiene todo; los datos se conservan en volúmenes
+```
+
+| Servicio | Dirección | Detalles |
+|---|---|---|
+| Kafka 3.9.1 (modo KRaft, un solo broker) | `127.0.0.1:9092` | Topic `happiness-events` con 3 particiones y replicación 1. La creación automática de topics está desactivada: un nombre mal escrito falla en lugar de crear otro topic. |
+| PostgreSQL 16.15 | `127.0.0.1:5432` | Base, usuario y contraseña `happiness` por defecto (se cambian copiando `.env.example` a `.env`). El esquema y los datos de referencia se cargan solo la primera vez. |
+
+Los puertos solo escuchan en el propio equipo. Kafka y PostgreSQL guardan sus datos en volúmenes, así que `docker compose down` no borra eventos ni predicciones. **No usar `docker compose down -v`**: elimina los volúmenes.
+
+Para volver a aplicar el esquema sobre una base ya creada (los scripts son idempotentes; ajustar usuario y base si se cambiaron en `.env`):
+
+```bash
+docker compose exec -T postgres psql -U happiness -d happiness -v ON_ERROR_STOP=1 < sql/create_tables.sql
+docker compose exec -T postgres psql -U happiness -d happiness -v ON_ERROR_STOP=1 < sql/seed_dimensions.sql
+```
+
+Las dependencias de Python para conectarse son `confluent-kafka` (Kafka) y `psycopg` (PostgreSQL), ya incluidas en `requirements.txt`.
