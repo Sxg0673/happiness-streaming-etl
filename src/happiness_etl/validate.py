@@ -9,7 +9,8 @@ Si alguna regla falla se juntan TODAS las fallas y se lanza ValidationError:
 el pipeline se detiene antes de escribir (o avisa que lo escrito no coincide).
 Las reglas están escritas de forma declarativa (nombre + chequeo) para poder
 llevarlas a Great Expectations más adelante si hace falta.
-La validación del contrato del evento (Parte B) se agregará en la Fase 6.
+La validación del contrato del evento (Parte B) está en contract.py y usa los
+mismos rangos (años, variables no negativas y rango del puntaje, desde config.py).
 """
 import logging
 from dataclasses import dataclass
@@ -17,11 +18,9 @@ from typing import Callable
 
 import pandas as pd
 
-from happiness_etl.config import COUNTRY, FEATURES, TARGET, UNIFIED_COLUMNS, YEAR, YEARS
+from happiness_etl.config import COUNTRY, FEATURES, SCORE_RANGE, TARGET, UNIFIED_COLUMNS, YEAR, YEARS
 
 logger = logging.getLogger(__name__)
-
-SCORE_RANGE = (0.0, 10.0)
 
 
 class ValidationError(Exception):

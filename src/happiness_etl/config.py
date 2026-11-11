@@ -23,6 +23,11 @@ FEATURES = ("gdp", "family", "health", "freedom", "generosity", "corruption")
 TARGET = "happiness_score"
 UNIFIED_COLUMNS = (COUNTRY, YEAR, *FEATURES, TARGET)
 
+# Rango válido del puntaje de felicidad (escala de Cantril). Lo comparten la
+# compuerta de calidad de la Parte A (validate.py) y el contrato del evento
+# (contract.py), para que el streaming acepte lo mismo que el ETL dio por limpio.
+SCORE_RANGE = (0.0, 10.0)
+
 # División entrenamiento/prueba (sugerencia del PDF: 70/30), estratificada por año.
 # La comparten eda.ipynb y model_training.ipynb para que sea la misma partición.
 TEST_SIZE = 0.3
@@ -40,6 +45,14 @@ MODEL_FILE = MODELS_DIR / "model.pkl"
 METRICS_FILE = MODELS_DIR / "metrics.json"
 STREAMING_DIR = ROOT_DIR / "data" / "streaming"
 STREAMING_FILE = STREAMING_DIR / "happiness_test.csv"
+
+# Streaming (Parte B). Nombres exigidos por el taller. La dirección es 127.0.0.1
+# y no "localhost": el broker se anuncia así (ver docker-compose.yml) y con
+# "localhost" el cliente intenta primero IPv6, donde no hay nadie escuchando.
+KAFKA_BOOTSTRAP_SERVERS = "127.0.0.1:9092"
+KAFKA_TOPIC = "happiness-events"
+KAFKA_TOPIC_PARTITIONS = 3
+KAFKA_CONSUMER_GROUP = "happiness-ml-team"
 
 # Equivalencias: nombre original en cada archivo -> nombre canónico.
 # Las columnas que no aparecen aquí (rangos, errores, intervalos, whiskers,
