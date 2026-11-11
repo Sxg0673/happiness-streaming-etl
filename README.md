@@ -31,6 +31,8 @@ data/raw/*.csv -> extract -> clean -> transform -> validate (compuerta de calida
 | `load.py` | Escritura atómica del CSV y lectura con tipos del dataset unificado |
 | `contract.py` | Parte B: contrato del evento (armar y validar eventos) |
 | `db.py` | Parte B: datos de conexión a PostgreSQL (entorno, `.env` o valores por defecto) |
+| `inference.py` | Parte B: carga `model.pkl` y predice un evento |
+| `storage.py` | Parte B: lo que el consumer escribe en PostgreSQL (crudo, estado y predicción) |
 
 Los pasos intermedios se pasan en memoria; solo el dataset final ya validado se escribe en disco, porque los notebooks lo leen desde procesos separados. El archivo no se versiona: se regenera con `main.py`.
 
@@ -57,8 +59,6 @@ La compuerta de calidad (`validate.py`) detiene el pipeline antes de escribir si
 _Pendiente._
 
 ## Pipeline de Kafka y contrato del evento
-
-_Parcial: el contrato y el producer están listos; el consumer se agrega después._
 
 ```
 data/streaming/happiness_test.csv -> producer -> topic happiness-events (3 particiones) -> consumer -> PostgreSQL
@@ -102,7 +102,7 @@ El contrato vive en un solo módulo, [`src/happiness_etl/contract.py`](src/happi
 | `VALID` | Cumple el contrato | |
 | `INVALID_SCHEMA` | El mensaje no se puede interpretar | No es JSON o no es un objeto, falta un campo, texto en un campo numérico, `year` decimal, `event_time` que no es una fecha |
 | `INVALID_VALUES` | La forma es correcta pero un valor está fuera de rango | Año 2020, variable negativa o mayor que 3, puntaje 11, `NaN` |
-| `PREDICTION_ERROR` | El evento era válido pero el modelo falló | Lo asigna el consumer |
+| `PREDICTION_ERROR` | El evento era válido pero el modelo falló | Lo asigna el consumer, con el error del modelo como motivo |
 
 Si hay problemas de esquema no se evalúan los rangos. Los campos que sobran se ignoran: el mensaje original queda completo en la tabla cruda.
 
@@ -124,6 +124,28 @@ Decisiones:
 - **Aviso contra duplicados.** Antes de enviar, el producer cuenta los mensajes que ya hay en el topic. Si hay alguno, avisa (sin bloquear) que reenviar duplicaría las predicciones y señala `scripts/reset_demo.py`.
 - **Fallas claras.** Si Kafka no responde, el topic no existe o un evento no se puede entregar, el envío se detiene con un mensaje y código de salida 1 (130 si se interrumpe con Ctrl+C).
 - **Eventos dañados para la demostración.** Los datos de prueba están limpios, así que sin `--with-invalid` nunca llegaría un evento inválido. Con esa opción el resultado es siempre el mismo: 240 mensajes, de los cuales 235 son `VALID`, 3 `INVALID_SCHEMA` (falta `health`, texto en `gdp`, JSON cortado) y 2 `INVALID_VALUES` (año 2020, `gdp` negativo).
+
+### Consumer
+
+[`kafka/consumer.py`](kafka/consumer.py) pertenece al grupo `happiness-ml-team` y atiende los mensajes uno por uno:
+
+1. **Guarda el mensaje crudo** en `raw_happiness_events` con estado `RECEIVED`, antes de interpretarlo.
+2. **Valida el contrato.** Si no lo cumple, marca el crudo como `INVALID_SCHEMA` o `INVALID_VALUES` con todos los motivos y pasa al siguiente.
+3. **Predice** con `models/model.pkl`. La fila se arma con las columnas que el Pipeline guardó al entrenarse, en el mismo orden; el preprocesamiento va dentro del Pipeline. Si el modelo falla, marca `PREDICTION_ERROR`.
+4. **Guarda la predicción** en `fact_predictions` y marca el crudo como `VALID`, en una sola transacción.
+5. **Confirma el offset** en Kafka, solo después de que la base guardó todo.
+
+Decisiones:
+
+- **Un evento malo no detiene nada.** Se guarda, se marca y se omite de la predicción. Esto incluye mensajes que ni siquiera son texto: como la columna `raw_payload` es de texto, los bytes que no son UTF-8 y los caracteres nulos se guardan como `�` y queda anotado en `error_message`. Un mensaje de texto se guarda idéntico.
+- **Ni pérdidas ni duplicados.** El offset se confirma a mano y al final. Si el consumer cae a mitad de un evento, Kafka lo vuelve a entregar: si el crudo ya estaba cerrado se omite (lo identifica la terna topic, partición, offset) y si quedó en `RECEIVED` se termina de procesar.
+- **Una falla de la infraestructura sí lo detiene.** Si PostgreSQL o Kafka dejan de responder, termina con un mensaje y código de salida 1. Al volver a ejecutarlo continúa donde iba.
+- **Mismo tratamiento del país que en el entrenamiento.** Antes de buscarlo en `dim_country` se le quitan los espacios sobrantes y se unifican las variantes (`Trinidad & Tobago` es `Trinidad and Tobago`). Un país desconocido se agrega con región vacía.
+- **`model_version`** es el tipo de modelo más una huella del archivo (`LinearRegression-ce738bb78c86`): si se reentrena cambia sola, y cada predicción dice qué modelo exacto la produjo.
+- **Lee desde el inicio del topic** (`auto.offset.reset=earliest`): da igual si arranca antes o después del producer.
+- **Cierre limpio.** Escucha hasta Ctrl+C: termina el evento en curso, sale del grupo y muestra el resumen por estado. Con `--idle-timeout N` termina solo tras N segundos sin mensajes.
+
+Comprobado contra Kafka y PostgreSQL reales: con `--with-invalid` quedan 240 eventos crudos (235 `VALID`, 3 `INVALID_SCHEMA`, 2 `INVALID_VALUES`) y 235 predicciones, y el error calculado en SQL coincide con el del entrenamiento (MAE 0.4212, RMSE 0.5403). Matar el consumer, apagar PostgreSQL o apagar Kafka a mitad de la corrida y volver a arrancar da el mismo resultado, sin eventos perdidos ni repetidos. La predicción se guarda unos 20 ms después de emitido el evento.
 
 ### Reinicio de la demostración
 
@@ -202,7 +224,7 @@ _Pendiente._
 
 ## Instrucciones de ejecución
 
-_Parcial: la Parte A, la infraestructura y el producer están listos; el consumer se agrega después._
+_Parcial: falta el dashboard._
 
 ### Parte A: dataset y modelo
 
@@ -260,9 +282,21 @@ Nunca usar `docker compose down -v` para "arreglar" algo: borra los volúmenes c
 Con la infraestructura arriba y el entorno virtual activo:
 
 ```bash
-python scripts/reset_demo.py                      # deja la demo en cero (pide confirmación; --yes para no preguntar)
-python kafka/producer.py --with-invalid           # 240 eventos, uno cada 0.3 s
-python kafka/producer.py --delay 0 --limit 10     # prueba rápida
+python scripts/reset_demo.py              # deja la demo en cero (pide confirmación; --yes para no preguntar)
+
+# Terminal 1: el consumer queda escuchando (Ctrl+C para detenerlo)
+python kafka/consumer.py
+
+# Terminal 2: el producer envía 240 eventos, uno cada 0.3 s
+python kafka/producer.py --with-invalid
 ```
 
-El producer registra una línea por evento con el país, el año, la partición, el offset y el `event_id`.
+El producer registra una línea por evento (país, año, partición, offset y `event_id`) y el consumer otra (puntaje real, predicho y error, o el motivo del rechazo). Para una prueba rápida: `python kafka/producer.py --delay 0 --limit 10` y `python kafka/consumer.py --idle-timeout 10`.
+
+Comprobación en la base:
+
+```bash
+docker compose exec -T postgres psql -U happiness -d happiness -c "SELECT status, count(*) FROM raw_happiness_events GROUP BY 1" -c "SELECT count(*), round(avg(absolute_error)::numeric, 4) AS mae FROM fact_predictions"
+```
+
+Las pruebas de integración (`tests/test_consumer.py`) usan PostgreSQL y Kafka reales con un esquema, un topic y un grupo temporales, así que no tocan los datos de la demostración; se saltan solas si Docker no está arriba.
