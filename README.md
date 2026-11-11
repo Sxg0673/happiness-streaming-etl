@@ -243,6 +243,18 @@ docker compose exec -T postgres psql -U happiness -d happiness -v ON_ERROR_STOP=
 
 Las dependencias de Python para conectarse son `confluent-kafka` (Kafka) y `psycopg` (PostgreSQL), ya incluidas en `requirements.txt`. Los scripts leen los datos de conexión a PostgreSQL de las variables de entorno, del archivo `.env` o de los valores por defecto, en ese orden.
 
+### Solución de problemas
+
+| Síntoma | Qué hacer |
+|---|---|
+| El producer dice "No hay conexión con Kafka" o los contenedores aparecen detenidos (por ejemplo, tras reiniciar Docker o el equipo) | `docker compose up -d --wait`. Los datos se conservan. |
+| El producer dice que el topic no existe | Esperar unos segundos tras levantar Docker (el topic se crea al final) o ejecutar `python scripts/reset_demo.py`. |
+| `docker compose up` falla porque el puerto 5432 está ocupado (otro PostgreSQL en el equipo) | Copiar `.env.example` a `.env`, cambiar `POSTGRES_PORT` y volver a levantar. Los scripts leen el mismo archivo. |
+| El dashboard muestra cada país duplicado | El producer se ejecutó dos veces sin reiniciar: `python scripts/reset_demo.py` y repetir la corrida. |
+| El equipo se pone lento con Docker | Asignar menos memoria a Docker Desktop (Settings > Resources); este proyecto usa menos de 1 GB entre los dos contenedores. |
+
+Nunca usar `docker compose down -v` para "arreglar" algo: borra los volúmenes con todos los eventos y predicciones.
+
 ### Parte B: streaming
 
 Con la infraestructura arriba y el entorno virtual activo:
