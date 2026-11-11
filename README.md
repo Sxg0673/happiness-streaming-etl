@@ -13,7 +13,41 @@ El proyecto tiene dos partes:
 
 ## Arquitectura
 
-_Pendiente (diagrama completo al final del proyecto)._
+![Arquitectura del proyecto](docs/img/architecture.png)
+
+La imagen se genera con [`docs/diagrams/architecture.py`](docs/diagrams/architecture.py) (requiere la biblioteca `diagrams` y Graphviz, que no hacen falta para ejecutar el pipeline).
+
+- **Parte A (una vez, sin Kafka):** el ETL limpia y unifica los cinco CSV; el notebook de entrenamiento divide el dataset, guarda el modelo y separa el 30 % de prueba, que es lo que se transmite.
+- **Parte B (en tiempo real):** el producer publica cada fila de prueba como un evento JSON en Kafka; el consumer lo lee, lo valida contra el contrato, predice con `model.pkl` y guarda todo en PostgreSQL; Tableau consulta la base en vivo.
+- **Docker** solo corre Kafka y PostgreSQL. El producer, el consumer y los notebooks son Python local.
+
+Recorrido de un evento, incluido el caso de un evento dañado:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Producer
+    participant K as Kafka (happiness-events)
+    participant C as Consumer
+    participant DB as PostgreSQL
+    participant T as Tableau
+    P->>K: evento JSON (llave = país)
+    K->>C: entrega el mensaje (grupo happiness-ml-team)
+    C->>DB: guarda el crudo con estado RECEIVED
+    C->>C: valida el contrato
+    alt evento válido
+        C->>C: predice con model.pkl
+        C->>DB: guarda la predicción y marca VALID (una transacción)
+    else esquema o valores inválidos
+        C->>DB: marca INVALID_SCHEMA o INVALID_VALUES con el motivo
+    else el modelo falla
+        C->>DB: marca PREDICTION_ERROR con el motivo
+    end
+    C->>K: confirma el offset (solo después de guardar)
+    T->>DB: consulta en vivo
+```
+
+Como el offset se confirma después de guardar, si el consumer se cae a mitad de un evento Kafka se lo vuelve a entregar y no se pierde; la llave única `(topic, partition, offset)` del crudo evita guardarlo dos veces.
 
 La Parte A es un paquete de Python (`src/happiness_etl/`) que ejecuta `main.py`:
 
@@ -56,7 +90,21 @@ La compuerta de calidad (`validate.py`) detiene el pipeline antes de escribir si
 
 ## Decisiones de ingeniería de características
 
-_Pendiente._
+El análisis está en [`notebooks/eda.ipynb`](notebooks/eda.ipynb) y el entrenamiento en [`notebooks/model_training.ipynb`](notebooks/model_training.ipynb). Todo el EDA usa solo la parte de entrenamiento, para no mirar los datos de prueba antes de evaluar.
+
+| Decisión | Motivo |
+|---|---|
+| División 70/30 con semilla fija (`random_state = 42`), estratificada por año | La pide el taller. Estratificar deja la misma proporción de cada año en entrenamiento (547 filas) y en prueba (235). |
+| Variables: `gdp`, `family`, `health`, `freedom` y `corruption`, estandarizadas | Son las que explican el puntaje. Se estandarizan para que los coeficientes sean comparables entre sí. |
+| `generosity` se descarta | Su coeficiente no es significativo (p = 0.45) y quitarla no cambia el error en validación cruzada (p = 0.53). Se prefiere el modelo más simple. El contrato del evento la sigue validando. |
+| `year` entra como variable categórica (one-hot, 2015 como base) | Cada reporte anual tiene su propio nivel: en validación cruzada reduce el RMSE un 4.4 % (p = 0.023). El efecto no crece año a año (2016 sube, 2017-2019 bajan respecto a 2015), por eso no se usa como número. |
+| No entran `country`, `region`, el ranking ni el puntaje | El ranking y el residual se calculan a partir del puntaje (sería fuga del target); el país no generaliza a datos nuevos. `actual_happiness_score` viaja en el evento solo para medir el error. |
+| Modelo: regresión lineal (`LinearRegression`) | Un Random Forest no fue significativamente mejor (RMSE 0.515 frente a 0.530, p = 0.32) y la regresión es más fácil de explicar. Todo va en un `Pipeline` de scikit-learn, así el consumer aplica exactamente las mismas transformaciones. |
+| Año fuera de 2015-2019 | Nunca se predice en silencio: el contrato lo rechaza como `INVALID_VALUES` y, como segunda barrera, el codificador usa `handle_unknown="error"` (sería `PREDICTION_ERROR`). |
+
+Resultado sobre los 235 registros de prueba: **MAE 0.421, RMSE 0.540, R² 0.804 y sesgo +0.039**, frente a MAE 1.047 de predecir siempre el promedio del año. Son las mismas cifras que calcula el dashboard sobre lo que llegó por Kafka (`models/metrics.json`, `sql/kpis.sql`).
+
+**Limitación.** La división es por fila (país y año), no por país: ninguna fila de prueba se usó para entrenar, pero el 96 % de ellas son de un país que tiene otros años en entrenamiento. Como los indicadores de un país cambian poco de un año a otro, el error medido es algo optimista para países que el modelo nunca vio (solo 5 países están únicamente en prueba). Una evaluación más exigente dividiría por país; aquí se mantiene el 70/30 que pide el taller.
 
 ## Pipeline de Kafka y contrato del evento
 
@@ -158,7 +206,8 @@ PostgreSQL con un esquema en estrella: una tabla de hechos con las predicciones,
 | Archivo | Contenido |
 |---|---|
 | `sql/create_tables.sql` | Tablas, llaves, restricciones e índices (idempotente). |
-| `sql/seed_dimensions.sql` | Carga inicial de `dim_country` (164 países con su región) y `dim_date` (2015-2019). |
+| `sql/seed_dimensions.sql` | Carga inicial de `dim_country` (164 países con su región) y `dim_date` (2015-2019). Se regenera desde `data/raw` con `python scripts/gen_seed.py`. |
+| `sql/kpis.sql` | Consultas de los KPI del dashboard, para comprobar sus cifras. |
 | `docs/diagrams/dimensional_model.dbml` | Diagrama del modelo para [dbdiagram.io](https://dbdiagram.io). |
 
 Diagrama generado en dbdiagram.io a partir de `docs/diagrams/dimensional_model.dbml`:
@@ -220,11 +269,32 @@ erDiagram
 
 ## Dashboard
 
-_Pendiente._
+[`dashboards/dashboard.twb`](dashboards/dashboard.twb) (Tableau Desktop 2026.2) se conecta **en vivo** a PostgreSQL: no usa extractos ni CSV, así que refleja lo que el consumer va guardando. Al abrirlo pide la contraseña de la base (`happiness` por defecto).
+
+![Dashboard sin filtros](docs/img/dashboard_general.png)
+
+| Requisito del taller | Dónde está |
+|---|---|
+| Error promedio de predicción | Tarjetas MAE, RMSE, R² y sesgo de la barra lateral, y barras "Error por región" |
+| Predicciones por país | Mapa "Error de predicción por país" (color = error absoluto medio) y tabla de la derecha (real, predicho y error por país) |
+| Predicho vs real | Dispersión con un punto por evento y la diagonal de la predicción perfecta |
+| Tendencias en el tiempo | "Tendencia por año": promedio real y predicho de cada reporte, con el MAE de cada año |
+
+Además muestra la salud del streaming: cuántos mensajes de Kafka terminó en cada estado (`raw_happiness_events`) y el porcentaje de válidos, que no cambia con los filtros.
+
+**Interacción.** Un clic en un país (mapa, tabla o dispersión), en una región o en un año filtra todo el tablero; las tarjetas se recalculan y lo que queda fuera se apaga en lugar de desaparecer. Otro clic sobre lo mismo lo suelta, y **Restablecer** vuelve al inicio. Está hecho con tres parámetros (país, región y año) y acciones de parámetro. Con un solo país el R² aparece como "—": con menos de tres predicciones no tiene sentido.
+
+| Región elegida | País elegido |
+|---|---|
+| ![Dashboard filtrado por región](docs/img/dashboard_region.png) | ![Dashboard filtrado por país](docs/img/dashboard_pais.png) |
+
+[`sql/kpis.sql`](sql/kpis.sql) calcula con SQL las mismas cifras que muestra el dashboard (métricas globales, estados, error por región, por país, por evento y por año) para comprobarlas sin Tableau:
+
+```bash
+docker compose exec -T postgres psql -U happiness -d happiness < sql/kpis.sql
+```
 
 ## Instrucciones de ejecución
-
-_Parcial: falta el dashboard._
 
 ### Parte A: dataset y modelo
 
@@ -298,5 +368,9 @@ Comprobación en la base:
 ```bash
 docker compose exec -T postgres psql -U happiness -d happiness -c "SELECT status, count(*) FROM raw_happiness_events GROUP BY 1" -c "SELECT count(*), round(avg(absolute_error)::numeric, 4) AS mae FROM fact_predictions"
 ```
+
+### Dashboard
+
+Con datos ya cargados por el consumer, abrir `dashboards/dashboard.twb` en Tableau Desktop y escribir la contraseña de PostgreSQL cuando la pida. Si el consumer sigue recibiendo eventos, el botón de actualizar de Tableau (o F5) trae lo nuevo.
 
 Las pruebas de integración (`tests/test_consumer.py`) usan PostgreSQL y Kafka reales con un esquema, un topic y un grupo temporales, así que no tocan los datos de la demostración; se saltan solas si Docker no está arriba.
