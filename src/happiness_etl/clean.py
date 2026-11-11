@@ -10,7 +10,15 @@ import re
 
 import pandas as pd
 
-from happiness_etl.config import COLUMN_MAP_BY_YEAR, COUNTRY, FEATURES, TARGET, UNIFIED_COLUMNS, YEAR
+from happiness_etl.config import (
+    COLUMN_MAP_BY_YEAR,
+    COUNTRY,
+    COUNTRY_NAME_MAP,
+    FEATURES,
+    TARGET,
+    UNIFIED_COLUMNS,
+    YEAR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +28,17 @@ NUMERIC_COLUMNS = (*FEATURES, TARGET)
 def _normalize_text(value: str) -> str:
     """Quita espacios al inicio y al final y deja un solo espacio entre palabras."""
     return re.sub(r"\s+", " ", value).strip()
+
+
+def canonical_country(name: str) -> str:
+    """Nombre de país tal como quedó en el dataset unificado.
+
+    Mismo tratamiento que recibieron los datos de entrenamiento (espacios y
+    variantes de nombre). Lo usa el consumer para que "Trinidad & Tobago" o
+    " Colombia " no creen un país distinto en dim_country.
+    """
+    text = _normalize_text(name)
+    return COUNTRY_NAME_MAP.get(text, text)
 
 
 def clean_year(df: pd.DataFrame, year: int) -> pd.DataFrame:
